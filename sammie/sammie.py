@@ -16,6 +16,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QProgressDialog, QApplication, QMessageBox
 from sam2.build_sam import build_sam2_video_predictor
 from sammie import core
+from sammie import exr_ingest
 from sammie.smooth import run_smoothing_model, prepare_smoothing_model
 from sammie.duplicate_frame_handler import replace_similar_matte_frames
 from sammie.settings_manager import get_settings_manager
@@ -1160,19 +1161,69 @@ def load_image_sequence(image_path, parent_window):
     settings_mgr = get_settings_manager()
     app_frame_format = settings_mgr.get_app_setting("frame_format", "png")
 
-    first_image = cv2.imread(files_to_load[0])
+    # EXR sources are scene-linear float, and far larger than the models can
+    # take, so they are colour-managed and downscaled into the cache instead of
+    # being copied or re-encoded as they are. One of these must never reach the
+    # plain cv2.imread() calls: with the OpenEXR codec enabled imread returns
+    # the float data cast to uint8 with no scaling, which looks like a
+    # near-black frame and saves again without complaint.
+    exr_converter = None
+    if exr_ingest.is_exr(files_to_load[0]):
+        try:
+            exr_converter = exr_ingest.ExrConverter(
+                long_edge=settings_mgr.get_app_setting(
+                    "exr_proxy_long_edge", exr_ingest.DEFAULT_PROXY_LONG_EDGE),
+                source_colorspace=settings_mgr.get_app_setting(
+                    "exr_source_colorspace", exr_ingest.DEFAULT_SOURCE_COLORSPACE),
+                display=settings_mgr.get_app_setting(
+                    "exr_display", exr_ingest.DEFAULT_DISPLAY),
+                view=settings_mgr.get_app_setting(
+                    "exr_view", exr_ingest.DEFAULT_VIEW),
+            )
+        except exr_ingest.ExrIngestError as e:
+            progress_dialog.close()
+            show_message_dialog(parent_window, title="Cannot load EXR",
+                                message=str(e), type="critical")
+            return 0
+        # The colour conversion is one-way; don't then throw it into a JPEG.
+        app_frame_format = "png"
+        print(f"EXR ingest: {exr_converter.describe()}")
+
+    try:
+        if exr_converter is not None:
+            first_image = exr_converter.convert(files_to_load[0])
+        else:
+            first_image = cv2.imread(files_to_load[0])
+    except exr_ingest.ExrIngestError as e:
+        progress_dialog.close()
+        show_message_dialog(parent_window, title="Cannot load EXR",
+                            message=str(e), type="critical")
+        return 0
+
     if first_image is None:
         progress_dialog.close()
         show_message_dialog(parent_window, title="Error",
                             message=f"Could not load image: {files_to_load[0]}", type="critical")
         return 0
 
+    # For an EXR sequence first_image is already the downscaled proxy, so this
+    # records the size the rest of the application will actually see rather
+    # than the size of the source plate.
     core.VideoInfo.height, core.VideoInfo.width = first_image.shape[:2]
     core.VideoInfo.fps = 24.0
     core.VideoInfo.total_frames = len(files_to_load)
 
     for frame_count, source_path in enumerate(files_to_load):
-        image = cv2.imread(source_path)
+        if exr_converter is not None:
+            try:
+                # Frame 0 is already converted; doing it twice would double the
+                # cost of the slowest step in the loop for nothing.
+                image = first_image if frame_count == 0 else exr_converter.convert(source_path)
+            except exr_ingest.ExrIngestError as e:
+                print(f"Warning: {e}, skipping...")
+                continue
+        else:
+            image = cv2.imread(source_path)
         if image is None:
             print(f"Warning: Could not load {source_path}, skipping...")
             continue
@@ -1194,6 +1245,23 @@ def load_image_sequence(image_path, parent_window):
                 shutil.rmtree(core.temp_dir)
             progress_dialog.close()
             return 0
+
+    if exr_converter is not None:
+        # The cache is 0-indexed and downscaled, and neither fact is
+        # recoverable from the frames themselves. Record what they came from so
+        # an export can be named back to the real source frame numbers and, if
+        # wanted, reformatted up to source resolution.
+        settings_mgr.set_session_setting("frame_format", "png")
+        settings_mgr.set_session_setting("exr_proxy_scale", exr_converter.scale)
+        settings_mgr.set_session_setting("exr_source_width", exr_converter.source_width)
+        settings_mgr.set_session_setting("exr_source_height", exr_converter.source_height)
+        settings_mgr.set_session_setting("exr_source_colorspace", exr_converter.source_colorspace)
+        settings_mgr.set_session_setting("exr_display", exr_converter.display)
+        settings_mgr.set_session_setting("exr_view", exr_converter.view)
+        settings_mgr.set_session_setting(
+            "exr_source_frame_numbers",
+            [exr_ingest.source_frame_number(path) for path in files_to_load]
+        )
 
     progress_dialog.setValue(100)
     return core.VideoInfo.total_frames

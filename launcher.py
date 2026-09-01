@@ -1,3 +1,11 @@
+import os
+
+# OpenCV reads its codec switches once, when cv2 is first imported anywhere in
+# the process, so this has to be set before any Sammie module pulls cv2 in.
+# Without it, reading an EXR raises; see sammie/exr_ingest.py for why enabling
+# it also means EXRs must never reach a bare cv2.imread().
+os.environ.setdefault("OPENCV_IO_ENABLE_OPENEXR", "1")
+
 from PySide6.QtWidgets import QApplication, QSplashScreen, QMessageBox
 from PySide6.QtGui import QPixmap, QIcon
 from PySide6.QtCore import Qt, QLockFile, QDir, QTimer

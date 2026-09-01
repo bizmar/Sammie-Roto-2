@@ -60,9 +60,17 @@ class ApplicationSettings:
     playback_fps: int = 24  # frames per second for playback
     
     # Performance
-    force_cpu: bool = False    
+    force_cpu: bool = False
     frame_format: str = "png"
     display_update_frequency: int = 5
+
+    # EXR ingest - scene-linear plates are colour-managed and downscaled into
+    # the frame cache on load. The proxy size is the main quality dial, since
+    # matting is what the VRAM is spent on.
+    exr_proxy_long_edge: int = 1920
+    exr_source_colorspace: str = "ACES2065-1"
+    exr_display: str = "sRGB - Display"
+    exr_view: str = "ACES 2.0 - SDR 100 nits (Rec.709)"
     
     # Deduplication
     dedupe_threshold: float = 0.8
@@ -92,6 +100,17 @@ class SessionSettings:
     color_space: int = 1    # 1=BT.709, 5=BT.601 etc.
     in_point: int = None
     out_point: int = None
+
+    # How an EXR sequence was brought in, so proxy mattes can be mapped back
+    # onto the untouched source plates. exr_proxy_scale of 0 means this session
+    # did not come from EXR.
+    exr_proxy_scale: float = 0.0
+    exr_source_width: int = 0
+    exr_source_height: int = 0
+    exr_source_colorspace: str = ""
+    exr_display: str = ""
+    exr_view: str = ""
+    exr_source_frame_numbers: list = field(default_factory=list)
     
     # Current state
     current_frame: int = 0

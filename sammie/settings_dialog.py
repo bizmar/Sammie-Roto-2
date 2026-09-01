@@ -7,6 +7,7 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtCore import Qt
 from sammie.settings_manager import SettingsManager
+from sammie import exr_ingest
 from sammie.gui_widgets import (
     ColorPickerWidget
 )
@@ -171,7 +172,38 @@ class SettingsDialog(QDialog):
         frame_layout.addRow("File Type:", self.frame_format_combo)
         
         layout.addWidget(frame_group)
-        
+
+        # EXR ingest settings group
+        exr_group = QGroupBox("EXR ingest")
+        exr_layout = QFormLayout(exr_group)
+
+        self.exr_proxy_spin = QSpinBox()
+        self.exr_proxy_spin.setRange(exr_ingest.PROXY_LONG_EDGE_MIN, exr_ingest.PROXY_LONG_EDGE_MAX)
+        self.exr_proxy_spin.setSingleStep(64)
+        self.exr_proxy_spin.setSuffix(" px")
+        self.exr_proxy_spin.setToolTip(
+            "Long edge of the proxy frames that EXR plates are downscaled to on load.\n"
+            "Full-resolution plates are far too large for the models, so this is the\n"
+            "main quality dial: higher gives a more detailed matte and costs VRAM\n"
+            "during matting. Sources smaller than this are never upscaled."
+        )
+        exr_layout.addRow("Proxy Long Edge:", self.exr_proxy_spin)
+
+        self.exr_view_combo = QComboBox()
+        self.exr_view_combo.setToolTip(
+            "View transform applied when converting scene-linear EXR to 8-bit.\n"
+            "The tone-mapped ACES view keeps highlight and shadow detail, which is\n"
+            "where matte edges live. 'Un-tone-mapped' matches a plain oiiotool\n"
+            "--colorconvert, but clips both ends of the range."
+        )
+        exr_layout.addRow("View Transform:", self.exr_view_combo)
+
+        if not exr_ingest.is_available():
+            exr_group.setEnabled(False)
+            exr_group.setToolTip("EXR support requires PyOpenColorIO (pip install opencolorio)")
+
+        layout.addWidget(exr_group)
+
         # Display settings group
         display_group = QGroupBox("Display Settings")
         display_layout = QFormLayout(display_group)
@@ -239,6 +271,17 @@ class SettingsDialog(QDialog):
         # General tab
         self.force_cpu_cb.setChecked(app_settings.force_cpu)
         self.frame_format_combo.setCurrentText(app_settings.frame_format)
+
+        # The view list comes from the active OCIO config, so a show config set
+        # through $OCIO offers its own views rather than the built-in ones.
+        self.exr_proxy_spin.setValue(app_settings.exr_proxy_long_edge)
+        self.exr_view_combo.clear()
+        views = exr_ingest.available_views(app_settings.exr_display)
+        if app_settings.exr_view and app_settings.exr_view not in views:
+            views = views + [app_settings.exr_view]
+        self.exr_view_combo.addItems(views)
+        self.exr_view_combo.setCurrentText(app_settings.exr_view)
+
         self.display_update_slider.setValue(app_settings.display_update_frequency)
         self.display_update_label.setText(str(app_settings.display_update_frequency))
         self.deduplication_threshold_spin.setValue(app_settings.dedupe_threshold)
@@ -267,6 +310,9 @@ class SettingsDialog(QDialog):
         # General tab
         app_settings.force_cpu = self.force_cpu_cb.isChecked()
         app_settings.frame_format = self.frame_format_combo.currentText()
+        app_settings.exr_proxy_long_edge = self.exr_proxy_spin.value()
+        if self.exr_view_combo.currentText():
+            app_settings.exr_view = self.exr_view_combo.currentText()
         app_settings.display_update_frequency = self.display_update_slider.value()
         app_settings.dedupe_threshold = self.deduplication_threshold_spin.value()
             
