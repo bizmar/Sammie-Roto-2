@@ -1101,7 +1101,13 @@ def detect_image_sequence(image_path):
             for file_path in potential_files:
                 file_name = os.path.basename(file_path)
                 file_base = os.path.splitext(file_name)[0]
-                if re.match(pattern, file_base):
+                candidate = re.match(pattern, file_base)
+                # The glob is deliberately loose, so the base name has to match
+                # exactly here. Matching the pattern alone is not enough: a
+                # render written beside its source - "shot_0001-Matte.0000.exr"
+                # next to "shot_0001.exr" - also ends in digits and would
+                # otherwise be pulled into the sequence.
+                if candidate and candidate.group(1) == base_name:
                     sequence_files.append(file_path)
 
             def natural_sort_key(path):
@@ -1117,6 +1123,33 @@ def detect_image_sequence(image_path):
                 return True, sequence_files
 
     return False, []
+
+
+def _compact_frame_cache(written):
+    """
+    Close the gaps left by frames that failed to load.
+
+    The cache is addressed by position, so a missing 00003.png is not something
+    the rest of the application can work around - it reads as a frame that
+    exists but will not open, and every later frame is off by one from what the
+    session thinks it has. Renaming the survivors down into a contiguous run
+    keeps the session honest.
+
+    `written` holds the file name stored for each source frame, or None where
+    the frame could not be read. Returns the indices into the original file
+    list that survived, so callers can keep their own per-frame data aligned.
+
+    Targets are always at or below their source and are filled in ascending
+    order, so a rename never lands on a file that has not moved out yet.
+    """
+    kept = []
+    for target, source_index in enumerate(i for i, name in enumerate(written) if name):
+        if target != source_index:
+            extension = os.path.splitext(written[source_index])[1]
+            os.replace(os.path.join(core.frames_dir, written[source_index]),
+                       os.path.join(core.frames_dir, f"{target:05d}{extension}"))
+        kept.append(source_index)
+    return kept
 
 
 def load_image_sequence(image_path, parent_window):
@@ -1232,6 +1265,7 @@ def load_image_sequence(image_path, parent_window):
 
         cancelled = threading.Event()
         failures = []
+        written = [None] * total_to_load
 
         def convert_and_write(index, source_path):
             if cancelled.is_set():
@@ -1240,9 +1274,9 @@ def load_image_sequence(image_path, parent_window):
                 # Frame 0 is already converted; doing it twice would double the
                 # cost of the slowest step in the loop for nothing.
                 image = first_image if index == 0 else exr_converter.convert(source_path)
-                frame_filename = os.path.join(
-                    core.frames_dir, f"{index:05d}.{app_frame_format}")
-                cv2.imwrite(frame_filename, image)
+                frame_name = f"{index:05d}.{app_frame_format}"
+                cv2.imwrite(os.path.join(core.frames_dir, frame_name), image)
+                written[index] = frame_name
             except Exception as e:
                 failures.append((source_path, e))
 
@@ -1277,6 +1311,7 @@ def load_image_sequence(image_path, parent_window):
         for source_path, error in failures:
             print(f"Warning: {error}, skipping {os.path.basename(source_path)}...")
     else:
+        written = [None] * total_to_load
         for frame_count, source_path in enumerate(files_to_load):
             image = cv2.imread(source_path)
             if image is None:
@@ -1285,12 +1320,12 @@ def load_image_sequence(image_path, parent_window):
 
             source_ext = os.path.splitext(source_path)[1].lower()
             if source_ext in ['.png', '.jpg', '.jpeg']:
-                output_ext = source_ext.lstrip('.')
-                frame_filename = os.path.join(core.frames_dir, f"{frame_count:05d}.{output_ext}")
-                shutil.copy2(source_path, frame_filename)
+                frame_name = f"{frame_count:05d}.{source_ext.lstrip('.')}"
+                shutil.copy2(source_path, os.path.join(core.frames_dir, frame_name))
             else:
-                frame_filename = os.path.join(core.frames_dir, f"{frame_count:05d}.{app_frame_format}")
-                cv2.imwrite(frame_filename, image)
+                frame_name = f"{frame_count:05d}.{app_frame_format}"
+                cv2.imwrite(os.path.join(core.frames_dir, frame_name), image)
+            written[frame_count] = frame_name
 
             progress_dialog.setValue((frame_count + 1) * 100 // total_to_load)
             QApplication.processEvents()
@@ -1300,6 +1335,23 @@ def load_image_sequence(image_path, parent_window):
                     shutil.rmtree(core.temp_dir)
                 progress_dialog.close()
                 return 0
+
+    # A frame that could not be read must not leave a hole in the cache, and
+    # the session has to count what was actually written rather than what was
+    # offered - otherwise the application believes in frames that are not there.
+    kept_indices = list(range(total_to_load))
+    if not all(written):
+        kept_indices = _compact_frame_cache(written)
+        print(f"Loaded {len(kept_indices)} of {total_to_load} frames; "
+              f"{total_to_load - len(kept_indices)} could not be read.")
+    core.VideoInfo.total_frames = len(kept_indices)
+
+    if not kept_indices:
+        progress_dialog.close()
+        show_message_dialog(parent_window, title="Error",
+                            message="None of the selected images could be read.",
+                            type="critical")
+        return 0
 
     if exr_converter is not None:
         # The cache is 0-indexed and downscaled, and neither fact is
@@ -1313,9 +1365,12 @@ def load_image_sequence(image_path, parent_window):
         settings_mgr.set_session_setting("exr_source_colorspace", exr_converter.source_colorspace)
         settings_mgr.set_session_setting("exr_display", exr_converter.display)
         settings_mgr.set_session_setting("exr_view", exr_converter.view)
+        # Indexed by cache position, so it has to follow the same compaction -
+        # a skipped plate must drop out of this list too, or every export after
+        # it would be named with the wrong source frame number.
         settings_mgr.set_session_setting(
             "exr_source_frame_numbers",
-            [exr_ingest.source_frame_number(path) for path in files_to_load]
+            [exr_ingest.source_frame_number(files_to_load[i]) for i in kept_indices]
         )
 
     progress_dialog.setValue(100)
