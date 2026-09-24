@@ -1099,7 +1099,13 @@ def detect_image_sequence(image_path):
             for file_path in potential_files:
                 file_name = os.path.basename(file_path)
                 file_base = os.path.splitext(file_name)[0]
-                if re.match(pattern, file_base):
+                candidate = re.match(pattern, file_base)
+                # The glob is loose, so the base name has to match exactly here.
+                # Matching the pattern alone is not enough: an export written
+                # beside its source - shot_0001-Matte.0000.png next to
+                # shot_0001.png - also ends in digits, and would otherwise be
+                # pulled into the sequence.
+                if candidate and candidate.group(1) == base_name:
                     sequence_files.append(file_path)
 
             def natural_sort_key(path):
