@@ -1177,6 +1177,10 @@ def load_image_sequence(image_path, parent_window):
     core.VideoInfo.fps = 24.0
     core.VideoInfo.total_frames = len(files_to_load)
 
+    # Records the file written for each source frame, or None where the frame
+    # could not be read, so the gaps can be closed afterwards.
+    written = [None] * len(files_to_load)
+
     for frame_count, source_path in enumerate(files_to_load):
         image = cv2.imread(source_path)
         if image is None:
@@ -1185,12 +1189,12 @@ def load_image_sequence(image_path, parent_window):
 
         source_ext = os.path.splitext(source_path)[1].lower()
         if source_ext in ['.png', '.jpg', '.jpeg']:
-            output_ext = source_ext.lstrip('.')
-            frame_filename = os.path.join(core.frames_dir, f"{frame_count:05d}.{output_ext}")
-            shutil.copy2(source_path, frame_filename)
+            frame_name = f"{frame_count:05d}.{source_ext.lstrip('.')}"
+            shutil.copy2(source_path, os.path.join(core.frames_dir, frame_name))
         else:
-            frame_filename = os.path.join(core.frames_dir, f"{frame_count:05d}.{app_frame_format}")
-            cv2.imwrite(frame_filename, image)
+            frame_name = f"{frame_count:05d}.{app_frame_format}"
+            cv2.imwrite(os.path.join(core.frames_dir, frame_name), image)
+        written[frame_count] = frame_name
 
         progress_dialog.setValue((frame_count + 1) * 100 // len(files_to_load))
         QApplication.processEvents()
@@ -1199,6 +1203,31 @@ def load_image_sequence(image_path, parent_window):
             if os.path.exists(core.temp_dir):
                 shutil.rmtree(core.temp_dir)
             progress_dialog.close()
+            return 0
+
+    # The cache is addressed by position, so a skipped frame leaves a hole that
+    # reads as a frame which exists but will not open, and total_frames counted
+    # every file offered rather than every file written. Rename the survivors
+    # down into a contiguous run and count those instead.
+    if not all(written):
+        loaded = 0
+        for frame_name in written:
+            if frame_name is None:
+                continue
+            if loaded != int(os.path.splitext(frame_name)[0]):
+                extension = os.path.splitext(frame_name)[1]
+                os.replace(os.path.join(core.frames_dir, frame_name),
+                           os.path.join(core.frames_dir, f"{loaded:05d}{extension}"))
+            loaded += 1
+        print(f"Loaded {loaded} of {len(files_to_load)} frames; "
+              f"{len(files_to_load) - loaded} could not be read.")
+        core.VideoInfo.total_frames = loaded
+
+        if loaded == 0:
+            progress_dialog.close()
+            show_message_dialog(parent_window, title="Error",
+                                message="None of the selected images could be read.",
+                                type="critical")
             return 0
 
     progress_dialog.setValue(100)
