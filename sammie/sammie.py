@@ -9,6 +9,7 @@ import zipfile
 import threading
 import queue
 import multiprocessing
+import concurrent.futures
 import av
 from tqdm import tqdm
 from PySide6.QtGui import QPixmap, QImage
@@ -1213,38 +1214,92 @@ def load_image_sequence(image_path, parent_window):
     core.VideoInfo.fps = 24.0
     core.VideoInfo.total_frames = len(files_to_load)
 
-    for frame_count, source_path in enumerate(files_to_load):
-        if exr_converter is not None:
+    total_to_load = len(files_to_load)
+
+    if exr_converter is not None:
+        # Decoding an EXR and running the colour transform are both expensive
+        # and both release the GIL, so frames convert in parallel. The pool is
+        # sized against memory as much as against cores - a 6.7K plate needs
+        # over a gigabyte of working set while it is in flight - and each frame
+        # is written inside its worker, so converted frames are never all held
+        # in memory at once.
+        workers = exr_ingest.suggested_workers(
+            exr_converter.source_width,
+            exr_converter.source_height,
+            requested=settings_mgr.get_app_setting("exr_ingest_workers", 0),
+        )
+        print(f"EXR ingest: {workers} worker{'s' if workers != 1 else ''}")
+
+        cancelled = threading.Event()
+        failures = []
+
+        def convert_and_write(index, source_path):
+            if cancelled.is_set():
+                return
             try:
                 # Frame 0 is already converted; doing it twice would double the
                 # cost of the slowest step in the loop for nothing.
-                image = first_image if frame_count == 0 else exr_converter.convert(source_path)
-            except exr_ingest.ExrIngestError as e:
-                print(f"Warning: {e}, skipping...")
-                continue
-        else:
-            image = cv2.imread(source_path)
-        if image is None:
-            print(f"Warning: Could not load {source_path}, skipping...")
-            continue
+                image = first_image if index == 0 else exr_converter.convert(source_path)
+                frame_filename = os.path.join(
+                    core.frames_dir, f"{index:05d}.{app_frame_format}")
+                cv2.imwrite(frame_filename, image)
+            except Exception as e:
+                failures.append((source_path, e))
 
-        source_ext = os.path.splitext(source_path)[1].lower()
-        if source_ext in ['.png', '.jpg', '.jpeg']:
-            output_ext = source_ext.lstrip('.')
-            frame_filename = os.path.join(core.frames_dir, f"{frame_count:05d}.{output_ext}")
-            shutil.copy2(source_path, frame_filename)
-        else:
-            frame_filename = os.path.join(core.frames_dir, f"{frame_count:05d}.{app_frame_format}")
-            cv2.imwrite(frame_filename, image)
+        with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as pool:
+            pending = {pool.submit(convert_and_write, i, path)
+                       for i, path in enumerate(files_to_load)}
+            completed = 0
+            while pending:
+                # Short waits rather than a blocking join, so the dialog keeps
+                # repainting and Cancel stays responsive while workers are busy.
+                just_done, pending = concurrent.futures.wait(
+                    pending, timeout=0.05,
+                    return_when=concurrent.futures.FIRST_COMPLETED)
+                completed += len(just_done)
+                progress_dialog.setValue(completed * 100 // total_to_load)
+                QApplication.processEvents()
 
-        progress_dialog.setValue((frame_count + 1) * 100 // len(files_to_load))
-        QApplication.processEvents()
+                if progress_dialog.wasCanceled():
+                    # Queued frames drop immediately; the few already running
+                    # see the flag and return without converting.
+                    cancelled.set()
+                    for future in pending:
+                        future.cancel()
+                    break
 
-        if progress_dialog.wasCanceled():
+        if cancelled.is_set():
             if os.path.exists(core.temp_dir):
                 shutil.rmtree(core.temp_dir)
             progress_dialog.close()
             return 0
+
+        for source_path, error in failures:
+            print(f"Warning: {error}, skipping {os.path.basename(source_path)}...")
+    else:
+        for frame_count, source_path in enumerate(files_to_load):
+            image = cv2.imread(source_path)
+            if image is None:
+                print(f"Warning: Could not load {source_path}, skipping...")
+                continue
+
+            source_ext = os.path.splitext(source_path)[1].lower()
+            if source_ext in ['.png', '.jpg', '.jpeg']:
+                output_ext = source_ext.lstrip('.')
+                frame_filename = os.path.join(core.frames_dir, f"{frame_count:05d}.{output_ext}")
+                shutil.copy2(source_path, frame_filename)
+            else:
+                frame_filename = os.path.join(core.frames_dir, f"{frame_count:05d}.{app_frame_format}")
+                cv2.imwrite(frame_filename, image)
+
+            progress_dialog.setValue((frame_count + 1) * 100 // total_to_load)
+            QApplication.processEvents()
+
+            if progress_dialog.wasCanceled():
+                if os.path.exists(core.temp_dir):
+                    shutil.rmtree(core.temp_dir)
+                progress_dialog.close()
+                return 0
 
     if exr_converter is not None:
         # The cache is 0-indexed and downscaled, and neither fact is

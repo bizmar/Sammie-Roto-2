@@ -22,6 +22,7 @@ Two details matter and are easy to get wrong:
 """
 import os
 import re
+import threading
 
 import cv2
 import numpy as np
@@ -56,6 +57,15 @@ UNTONEMAPPED_VIEW = "Un-tone-mapped"
 # Half-float maximum, used to bring infinities back into a sane range instead
 # of letting them turn into black pixels.
 _HALF_MAX = 65504.0
+
+# Peak working set per concurrent frame, as a multiple of the source plate's
+# float32 size. Measured at about 3.7x on 6.7K ACES plates: the decoded float
+# image, the resize destination, and OpenCV's own scratch all coexist briefly.
+# Used only to keep the worker count from exhausting memory.
+_MEMORY_FACTOR = 3.7
+
+# Beyond this, more workers stop paying for themselves and only cost memory.
+_MAX_WORKERS = 16
 
 
 class ExrIngestError(Exception):
@@ -127,6 +137,70 @@ def source_frame_number(path):
     return int(match.group(1)) if match else None
 
 
+def _available_memory_bytes():
+    """
+    Free physical memory, or 0 if it cannot be determined.
+
+    Deliberately 'available' rather than 'total': on a workstation the plates
+    are often being ingested while Nuke or a browser is holding several
+    gigabytes, and sizing the worker pool against total RAM would then push
+    the machine into swap.
+    """
+    try:  # Windows
+        import ctypes
+        from ctypes import wintypes
+
+        class MemoryStatusEx(ctypes.Structure):
+            _fields_ = [("dwLength", wintypes.DWORD),
+                        ("dwMemoryLoad", wintypes.DWORD),
+                        ("ullTotalPhys", ctypes.c_ulonglong),
+                        ("ullAvailPhys", ctypes.c_ulonglong),
+                        ("ullTotalPageFile", ctypes.c_ulonglong),
+                        ("ullAvailPageFile", ctypes.c_ulonglong),
+                        ("ullTotalVirtual", ctypes.c_ulonglong),
+                        ("ullAvailVirtual", ctypes.c_ulonglong),
+                        ("ullAvailExtendedVirtual", ctypes.c_ulonglong)]
+
+        status = MemoryStatusEx()
+        status.dwLength = ctypes.sizeof(MemoryStatusEx)
+        if ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(status)):
+            return int(status.ullAvailPhys)
+    except Exception:
+        pass
+
+    try:  # Linux, and macOS for SC_PHYS_PAGES
+        return os.sysconf('SC_PAGE_SIZE') * os.sysconf('SC_AVPHYS_PAGES')
+    except Exception:
+        pass
+
+    return 0
+
+
+def suggested_workers(width, height, requested=0):
+    """
+    How many frames to convert at once.
+
+    A 6.7K plate needs well over a gigabyte of working set while it is being
+    decoded and resized, so the limit here is usually memory rather than
+    cores. Returns at least 1, and never more than there are cores to run on.
+    """
+    if requested and requested > 0:
+        return max(1, min(int(requested), _MAX_WORKERS))
+
+    cores = os.cpu_count() or 4
+    workers = max(2, cores // 2)
+
+    per_frame = width * height * 3 * 4 * _MEMORY_FACTOR
+    available = _available_memory_bytes()
+    if per_frame > 0 and available > 0:
+        # Leave most of memory alone; this is a background step, not the point
+        # of the application, and matting will want the machine shortly.
+        affordable = int((available * 0.5) // per_frame)
+        workers = min(workers, max(1, affordable))
+
+    return max(1, min(workers, _MAX_WORKERS, cores))
+
+
 class ExrConverter:
     """
     Converts EXR frames to 8-bit BGR images at the proxy resolution.
@@ -134,6 +208,10 @@ class ExrConverter:
     The downscale runs before the colour transform. That order is both more
     correct - averaging belongs in scene-linear light - and around ten times
     faster, since the transform then runs on 2.5MP instead of 30MP.
+
+    convert() is safe to call from several threads at once: the OCIO CPU
+    processor is immutable once built, and the only shared state written here
+    is the source geometry, which is recorded once under a lock.
     """
 
     def __init__(self, long_edge=DEFAULT_PROXY_LONG_EDGE,
@@ -146,9 +224,11 @@ class ExrConverter:
 
         # Filled in by the first conversion, and recorded in the session so the
         # exporter can map proxy mattes back onto the untouched originals.
+        # Written once, under a lock, because frames convert concurrently.
         self.scale = 1.0
         self.source_width = 0
         self.source_height = 0
+        self._geometry_lock = threading.Lock()
 
         config = get_config()
         try:
@@ -182,25 +262,36 @@ class ExrConverter:
                 f"Unsupported channel count {image.shape[2]} in {os.path.basename(path)}"
             )
 
-        rgb = np.ascontiguousarray(image[:, :, ::-1], dtype=np.float32)
-        # Lossy compression and extreme scene values can leave NaN or Inf,
-        # which would otherwise propagate through the transform as holes.
-        rgb = np.nan_to_num(rgb, nan=0.0, posinf=_HALF_MAX, neginf=0.0)
+        height, width = image.shape[:2]
 
-        height, width = rgb.shape[:2]
-        self.source_width, self.source_height = width, height
+        # Lossy compression and extreme scene values can leave NaN or Inf,
+        # which would otherwise propagate through the resize and the transform
+        # as holes. This has to happen at source resolution, before any
+        # averaging, or a single bad pixel poisons a whole neighbourhood - but
+        # clean plates are the normal case, so only pay for it when needed.
+        if not np.isfinite(image).all():
+            image = np.nan_to_num(image, copy=False, nan=0.0,
+                                  posinf=_HALF_MAX, neginf=0.0)
 
         source_long_edge = max(width, height)
         if self.long_edge and source_long_edge > self.long_edge:
-            self.scale = self.long_edge / source_long_edge
-            new_size = (max(1, int(round(width * self.scale))),
-                        max(1, int(round(height * self.scale))))
+            scale = self.long_edge / source_long_edge
+            new_size = (max(1, int(round(width * scale))),
+                        max(1, int(round(height * scale))))
             # INTER_AREA is the right filter for a large reduction, and this
-            # runs while the data is still scene-linear.
-            rgb = np.ascontiguousarray(cv2.resize(rgb, new_size,
-                                                  interpolation=cv2.INTER_AREA))
+            # runs while the data is still scene-linear. Channel order does not
+            # affect the result, so the BGR to RGB swap waits until afterwards,
+            # where it costs a few megabytes instead of a few hundred.
+            image = cv2.resize(image, new_size, interpolation=cv2.INTER_AREA)
         else:
-            self.scale = 1.0
+            scale = 1.0
+
+        with self._geometry_lock:
+            if not self.source_width:
+                self.scale = scale
+                self.source_width, self.source_height = width, height
+
+        rgb = np.ascontiguousarray(image[:, :, ::-1], dtype=np.float32)
 
         out_height, out_width = rgb.shape[:2]
         self.processor.apply(ocio.PackedImageDesc(rgb, out_width, out_height, 3))

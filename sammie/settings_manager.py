@@ -71,6 +71,11 @@ class ApplicationSettings:
     exr_source_colorspace: str = "ACES2065-1"
     exr_display: str = "sRGB - Display"
     exr_view: str = "ACES 2.0 - SDR 100 nits (Rec.709)"
+    # Frames converted concurrently on load. 0 picks a count from the core
+    # count and the free memory, which is usually the right answer - a large
+    # plate needs over a gigabyte in flight, so this is memory-bound well
+    # before it is core-bound.
+    exr_ingest_workers: int = 0
     
     # Deduplication
     dedupe_threshold: float = 0.8
