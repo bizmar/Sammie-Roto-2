@@ -13,6 +13,7 @@ dependencies = [
     "OpenEXR~=3.4",
     "diffusers~=0.39",
     "einops~=0.8",
+    "opencolorio~=2.5",
 ]
 
 [project.optional-dependencies]
