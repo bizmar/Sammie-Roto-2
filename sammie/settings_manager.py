@@ -82,7 +82,8 @@ class ApplicationSettings:
     
     # Export dialog defaults
     export_codec: str = "prores"
-    export_output_type: str = "Matte" 
+    export_output_type: str = "Matte"   # superseded by export_output_types; still read as a fallback
+    export_output_types: list = field(default_factory=list)
     export_use_input_folder: bool = True
     export_filename_template: str = "{input_name}-{output_type}"
     export_antialias: bool = False

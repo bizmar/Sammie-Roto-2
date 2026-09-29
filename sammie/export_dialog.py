@@ -5,16 +5,27 @@ Refactored for clarity and extensibility.
 """
 import os
 import datetime
+from dataclasses import replace
 from PySide6.QtWidgets import (
-    QDialog, QVBoxLayout, QHBoxLayout, QFormLayout, QGroupBox,
+    QDialog, QVBoxLayout, QHBoxLayout, QFormLayout, QGroupBox, QGridLayout,
     QPushButton, QLabel, QLineEdit, QComboBox, QSpinBox, QCheckBox,
-    QFileDialog, QProgressDialog, QMessageBox
+    QFileDialog, QProgressDialog, QMessageBox, QWidget
 )
 from PySide6.QtCore import Qt
 from sammie.core import VideoInfo, input_base_name, source_frame_number, source_frame_name
 from sammie.gui_widgets import show_message_dialog
 from sammie.export_formats import FormatRegistry, ExportSettings
 from sammie.export_workers import VideoExportWorker, SequenceExportWorker
+
+
+# The outputs offered as checkboxes, laid out as the grid shows them. Ticked
+# outputs are exported one after another in this order.
+OUTPUT_GRID = [
+    ("Segmentation", ['Segmentation-Matte', 'Segmentation-Alpha', 'Segmentation-BGcolor']),
+    ("Matting", ['Matting-Matte', 'Matting-Alpha', 'Matting-BGcolor']),
+]
+OUTPUT_TYPES = [t for _, row in OUTPUT_GRID for t in row] + ['ObjectRemoval']
+MATTING_TYPES = ('Matting-Matte', 'Matting-Alpha', 'Matting-BGcolor')
 
 
 class ExportPathManager:
@@ -195,10 +206,21 @@ class ExportDialog(QDialog):
         self.format_combo.currentIndexChanged.connect(self._on_format_changed)
         settings_layout.addRow("Export Format:", self.format_combo)
         
-        # Output type
-        self.output_type_combo = QComboBox()
-        self.output_type_combo.currentTextChanged.connect(self._on_output_type_changed)
-        settings_layout.addRow("Output Type:", self.output_type_combo)
+        # Outputs - any number can be ticked and are exported in one go, all
+        # with the same format and settings
+        outputs_widget = QWidget()
+        outputs_grid = QGridLayout(outputs_widget)
+        outputs_grid.setContentsMargins(0, 0, 0, 0)
+        for col, heading in enumerate(["Matte", "Alpha", "BG colour"], start=1):
+            outputs_grid.addWidget(QLabel(heading), 0, col, Qt.AlignCenter)
+        self.output_checkboxes = {}
+        for row, (label, types) in enumerate(OUTPUT_GRID, start=1):
+            outputs_grid.addWidget(QLabel(label), row, 0)
+            for col, output_type in enumerate(types, start=1):
+                self._add_output_checkbox(outputs_grid, output_type, row, col)
+        outputs_grid.addWidget(QLabel("Object removal"), len(OUTPUT_GRID) + 1, 0)
+        self._add_output_checkbox(outputs_grid, 'ObjectRemoval', len(OUTPUT_GRID) + 1, 1)
+        settings_layout.addRow("Outputs:", outputs_widget)
         
         # Object selection
         self.object_id_combo = QComboBox()
@@ -285,6 +307,19 @@ class ExportDialog(QDialog):
         self.filename_template_edit.setCursorPosition(cursor_pos + len(tag))
         self.tag_dropdown.setCurrentIndex(0)
     
+    def _add_output_checkbox(self, grid, output_type, row, col):
+        """Add one output's checkbox to the outputs grid"""
+        checkbox = QCheckBox()
+        checkbox.setToolTip(output_type)
+        checkbox.stateChanged.connect(self._on_output_types_changed)
+        grid.addWidget(checkbox, row, col, Qt.AlignCenter)
+        self.output_checkboxes[output_type] = checkbox
+
+    def _selected_output_types(self) -> list:
+        """The ticked outputs the current format can produce, in export order"""
+        return [t for t in OUTPUT_TYPES
+                if self.output_checkboxes[t].isEnabled() and self.output_checkboxes[t].isChecked()]
+
     def _on_format_changed(self, index):
         """Handle format selection change"""
         format_id = self.format_combo.itemData(index)
@@ -293,55 +328,37 @@ class ExportDialog(QDialog):
         if not self.current_format:
             return
         
-        # Update output type combo
-        current_output = self.output_type_combo.currentText()
-        self.output_type_combo.clear()
-        self.output_type_combo.addItems(self.current_format.get_available_output_types())
-        
-        # Restore selection if valid
-        new_index = self.output_type_combo.findText(current_output)
-        if new_index >= 0:
-            self.output_type_combo.setCurrentIndex(new_index)
+        # Outputs this format can't produce are greyed out and unticked
+        available = self.current_format.get_available_output_types()
+        for output_type, checkbox in self.output_checkboxes.items():
+            checkbox.blockSignals(True)
+            checkbox.setEnabled(output_type in available)
+            if output_type not in available:
+                checkbox.setChecked(False)
+            checkbox.blockSignals(False)
         
         # Update UI visibility based on format capabilities
         self._update_ui_for_format()
-        self._update_filename_preview()
+        self._on_output_types_changed()
     
-    def _on_output_type_changed(self):
-        """Handle output type change"""
-        output_type = self.output_type_combo.currentText()
-        is_object_removal = output_type == 'ObjectRemoval'
-        
-        # Repopulate the object combo to reflect the correct source for this output type
+    def _on_output_types_changed(self):
+        """Handle an output being ticked or unticked"""
+        # Repopulate the object combo to reflect the correct source for these outputs
         self._repopulate_object_combo()
-
-        # ObjectRemoval always uses all objects
-        if is_object_removal:
-            self.object_id_combo.setCurrentIndex(0)  # Set to "All Objects"
-            self.object_id_combo.setEnabled(False)
-            self.export_multiple_checkbox.setVisible(False)
-            self.export_multiple_checkbox.setChecked(False)
-        else:
-            # Re-enable based on format capabilities
-            if self.current_format and self.current_format.is_sequence and self.current_format.format_id == 'exr':
-                # EXR sequences always export all objects as layers
-                self.object_id_combo.setEnabled(False)
-            else:
-                self.object_id_combo.setEnabled(not self.export_multiple_checkbox.isChecked())
-            
-            # Show multiple export checkbox if format supports it
-            if self.current_format and self.current_format.supports_multiple_export:
-                self.export_multiple_checkbox.setVisible(True)
-        
-        self._update_antialias_visibility()
+        self._update_object_controls()
         self._update_filename_preview()
     
     def _repopulate_object_combo(self):
-        """Repopulate the object selection combo based on the current output type."""
+        """Repopulate the object selection combo, keeping the current choice if it is still offered"""
+        current = self.object_id_combo.currentData()
+        self.object_id_combo.blockSignals(True)
         self.object_id_combo.clear()
         self.object_id_combo.addItem("All Objects", -1)
-        for obj_id in self._get_available_object_ids():
+        for obj_id in self._get_available_object_ids(self._selected_output_types()):
             self.object_id_combo.addItem(f"Object {obj_id}", obj_id)
+        index = self.object_id_combo.findData(current)
+        self.object_id_combo.setCurrentIndex(max(index, 0))
+        self.object_id_combo.blockSignals(False)
 
     def _update_ui_for_format(self):
         """Update UI controls based on current format"""
@@ -359,41 +376,34 @@ class ExportDialog(QDialog):
             self.quantizer_spin.setValue(self.current_format.get_default_quality())
             self.quantizer_label.setText(self.current_format.get_quality_label())
         
-        # Multiple export
-        show_multiple = self.current_format.supports_multiple_export
+        # Include original
+        show_include_original = self.current_format.supports_include_original
+        self.include_original_checkbox.setVisible(show_include_original)
+    
+    def _update_object_controls(self):
+        """Update object selection, per-object export and antialiasing for the ticked outputs"""
+        if not self.current_format:
+            return
+        output_types = self._selected_output_types()
+        # ObjectRemoval always uses all objects, so the object controls only
+        # matter when something else is ticked alongside it
+        only_removal = output_types == ['ObjectRemoval']
+        
+        show_multiple = self.current_format.supports_multiple_export and not only_removal
         self.export_multiple_checkbox.setVisible(show_multiple)
         if not show_multiple:
             self.export_multiple_checkbox.setChecked(False)
         
-        # Include original
-        show_include_original = self.current_format.supports_include_original
-        self.include_original_checkbox.setVisible(show_include_original)
-        
-        # Object selection - check output type as well
-        output_type = self.output_type_combo.currentText()
-        is_object_removal = output_type == 'ObjectRemoval'
-        is_sequence = self.current_format.is_sequence
-        
-        if is_object_removal or (is_sequence and self.current_format.format_id == 'exr'):
-            # ObjectRemoval and EXR always use all objects
+        if only_removal or self.current_format.format_id == 'exr':
+            # EXR sequences always export all objects as layers
             self.object_id_combo.setCurrentIndex(0)
             self.object_id_combo.setEnabled(False)
         else:
             self.object_id_combo.setEnabled(not self.export_multiple_checkbox.isChecked())
         
-        # Hide multiple export for ObjectRemoval
-        if is_object_removal:
-            self.export_multiple_checkbox.setVisible(False)
-            self.export_multiple_checkbox.setChecked(False)
-        
         # Antialiasing (only for segmentation modes)
-        self._update_antialias_visibility()
-    
-    def _update_antialias_visibility(self):
-        """Update antialiasing checkbox visibility"""
-        output_type = self.output_type_combo.currentText()
-        is_segmentation = output_type.startswith('Segmentation-')
-        self.antialias_checkbox.setVisible(is_segmentation)
+        self.antialias_checkbox.setVisible(
+            any(t.startswith('Segmentation-') for t in output_types))
     
     def _on_export_multiple_changed(self, state):
         """Handle export multiple checkbox change"""
@@ -406,66 +416,67 @@ class ExportDialog(QDialog):
         if not self.current_format or not self.path_manager:
             return
         
-        template = self.filename_template_edit.text().strip() or "{input_name}-{output_type}"
-        output_type = self.output_type_combo.currentText()
-        
-        # Get output directory
-        if self.use_input_folder_checkbox.isChecked():
-            input_file = self.parent_window.settings_mgr.get_session_setting("video_file_path", "")
-            folder = os.path.dirname(input_file) if input_file else os.getcwd()
-        else:
-            folder = self.folder_edit.text() or os.getcwd()
-        
-        # Generate preview
-        if self.current_format.is_sequence:
-            # Sequence preview
-            base_path = self.path_manager.generate_output_path(
-                folder, template, self.current_format.format_id, output_type
-            )
-            preview = f"{base_path}{self.current_format.file_extension}"
-            self.filename_preview_label.setText(preview)
-        elif self.export_multiple_checkbox.isChecked():
-            # Multiple file preview
-            object_ids = self._get_available_object_ids()
-            if object_ids:
-                preview_files = []
-                for i, obj_id in enumerate(object_ids[:3]):
-                    path = self.path_manager.generate_output_path(
-                        folder, template, self.current_format.format_id, output_type, obj_id
-                    )
-                    preview_files.append(os.path.basename(path))
-                
-                preview_text = "\n".join(preview_files)
-                if len(object_ids) > 3:
-                    preview_text += f"\n... and {len(object_ids) - 3} more files"
-                self.filename_preview_label.setText(preview_text)
-            else:
-                self.filename_preview_label.setText("No objects found")
-        else:
-            # Single file preview
-            object_id = self.object_id_combo.currentData()
-            path = self.path_manager.generate_output_path(
-                folder, template, self.current_format.format_id, output_type, object_id
-            )
-            self.filename_preview_label.setText(path)
-    
-    # === Export Logic ===
-    
-    def _start_export(self):
-        """Start the export process"""
-        if not self._validate_settings():
+        jobs = self._build_export_jobs()
+        if not jobs:
+            self.filename_preview_label.setText("Tick at least one output")
             return
         
-        # Build export settings
-        settings = self._build_export_settings()
+        names = []
+        for settings in jobs:
+            output_paths, _ = self._generate_output_paths(settings)
+            if self.current_format.is_sequence:
+                names.append(f"{output_paths[0]}{self.current_format.file_extension}")
+            else:
+                names.extend(output_paths)
         
+        if not names:
+            self.filename_preview_label.setText("No objects found")
+        elif len(names) == 1:
+            self.filename_preview_label.setText(names[0])
+        else:
+            preview_text = "\n".join(os.path.basename(n) for n in names[:6])
+            if len(names) > 6:
+                preview_text += f"\n... and {len(names) - 6} more"
+            self.filename_preview_label.setText(preview_text)
+    
+    # === Export Logic ===
+
+    def _start_export(self):
+        """Start exporting every ticked output, one after another"""
+        if not self._validate_settings():
+            return
+
+        self._export_jobs = self._build_export_jobs()
+        self._export_index = -1
+        self._export_messages = []
+        self._export_cancelled = False
+
+        # Create progress dialog, shared by every output in the run
+        self.progress_dialog = QProgressDialog("Exporting...", "Cancel", 0, 100, self)
+        self.progress_dialog.setWindowTitle("Exporting")
+        self.progress_dialog.setWindowModality(Qt.WindowModal)
+        self.progress_dialog.setAutoClose(False)
+        self.progress_dialog.setAutoReset(False)
+        self.progress_dialog.canceled.connect(self._cancel_export)
+        self.progress_dialog.show()
+
+        # Disable export button
+        self.export_btn.setEnabled(False)
+
+        self._start_next_export()
+
+    def _start_next_export(self):
+        """Start the worker for the next output in the run"""
+        self._export_index += 1
+        settings = self._export_jobs[self._export_index]
+
         # Get points
         points = self.parent_window.point_manager.get_all_points()
         total_frames = VideoInfo.total_frames
-        
+
         # Generate output paths
         output_paths, object_ids = self._generate_output_paths(settings)
-        
+
         # Create appropriate worker
         if self.current_format.is_sequence:
             base_filename = os.path.basename(output_paths[0])
@@ -476,51 +487,42 @@ class ExportDialog(QDialog):
             self.export_worker = VideoExportWorker(
                 settings, points, total_frames, output_paths, object_ids, self.parent_window
             )
-        
+
         # Connect signals
         self.export_worker.progress_updated.connect(self._update_progress)
         self.export_worker.status_updated.connect(self._update_status)
         self.export_worker.finished.connect(self._export_finished)
-        
-        # Create progress dialog
-        initial_text = self._get_initial_progress_text(settings, output_paths)
-        self.progress_dialog = QProgressDialog(initial_text, "Cancel", 0, 100, self)
-        self.progress_dialog.setWindowTitle("Exporting")
-        self.progress_dialog.setWindowModality(Qt.WindowModal)
-        self.progress_dialog.setAutoClose(False)
-        self.progress_dialog.canceled.connect(self._cancel_export)
-        self.progress_dialog.show()
-        
-        # Disable export button
-        self.export_btn.setEnabled(False)
-        
+
+        self._update_status(self._get_initial_progress_text(settings, output_paths))
+        self._update_progress(0)
+
         # Start export
         self.export_worker.start()
-    
-    def _build_export_settings(self) -> ExportSettings:
-        """Build export settings from UI"""
+
+    def _build_export_jobs(self) -> list:
+        """Build one set of export settings per ticked output, all sharing the rest of the UI"""
         # Get in/out points
         use_inout = self.use_inout_checkbox.isChecked()
         in_point = None
         out_point = None
-        
+
         if use_inout and self.parent_window:
             settings_mgr = self.parent_window.settings_mgr
             in_point = settings_mgr.get_session_setting("in_point", None)
             out_point = settings_mgr.get_session_setting("out_point", None)
-        
+
         # Get output directory
         if self.use_input_folder_checkbox.isChecked():
             input_file = self.parent_window.settings_mgr.get_session_setting("video_file_path", "")
             output_dir = os.path.dirname(input_file) if input_file else os.getcwd()
         else:
             output_dir = self.folder_edit.text() or os.getcwd()
-        
-        return ExportSettings(
+
+        base = ExportSettings(
             format_id=self.current_format.format_id,
             output_dir=output_dir,
             filename_template=self.filename_template_edit.text().strip() or "{input_name}-{output_type}",
-            output_type=self.output_type_combo.currentText(),
+            output_type="",
             object_id=self.object_id_combo.currentData(),
             antialias=self.antialias_checkbox.isChecked(),
             quality=self.quantizer_spin.value(),
@@ -530,15 +532,24 @@ class ExportDialog(QDialog):
             include_original=self.include_original_checkbox.isChecked(),
             export_multiple=self.export_multiple_checkbox.isChecked()
         )
-    
+
+        jobs = []
+        for output_type in self._selected_output_types():
+            if output_type == 'ObjectRemoval':
+                # ObjectRemoval always uses all objects, in one file
+                jobs.append(replace(base, output_type=output_type, object_id=-1, export_multiple=False))
+            else:
+                jobs.append(replace(base, output_type=output_type))
+        return jobs
+
     def _generate_output_paths(self, settings: ExportSettings) -> tuple:
         """Generate output paths and corresponding object IDs"""
         output_paths = []
         object_ids = []
-        
+
         if settings.export_multiple:
             # Multiple files for different objects
-            all_object_ids = self._get_available_object_ids()
+            all_object_ids = self._get_available_object_ids([settings.output_type])
             for obj_id in all_object_ids:
                 path = self.path_manager.generate_output_path(
                     settings.output_dir, settings.filename_template,
@@ -554,18 +565,33 @@ class ExportDialog(QDialog):
             )
             output_paths.append(path)
             object_ids.append(settings.object_id)
-        
+
         return output_paths, object_ids
-    
+
     def _validate_settings(self) -> bool:
         """Validate export settings"""
-        # Validate output directory
-        if not self._validate_output_directory():
+        jobs = self._build_export_jobs()
+        if not jobs:
+            show_message_dialog(
+                self, title="Invalid Settings",
+                message="Tick at least one output to export.",
+                type='warning'
+            )
             return False
-        
+
+        template = self.filename_template_edit.text().strip() or "{input_name}-{output_type}"
+
+        # Each output needs its own filename, or they would overwrite each other
+        if len(jobs) > 1 and "{output_type}" not in template:
+            show_message_dialog(
+                self, title="Invalid Settings",
+                message="When exporting more than one output, filename must include the {output_type} tag.",
+                type='warning'
+            )
+            return False
+
         # Validate template for multiple export
-        if self.export_multiple_checkbox.isChecked():
-            template = self.filename_template_edit.text().strip() or "{input_name}-{output_type}"
+        if any(job.export_multiple for job in jobs):
             if "{object_id}" not in template and "{object_name}" not in template:
                 show_message_dialog(
                     self, title="Invalid Settings",
@@ -573,24 +599,27 @@ class ExportDialog(QDialog):
                     type='warning'
                 )
                 return False
-        
-        # Check for existing files
-        settings = self._build_export_settings()
-        output_paths, _ = self._generate_output_paths(settings)
-        
-        if self.current_format.is_sequence:
-            # For sequences, check if any frame files exist
-            existing = self._check_sequence_files_exist(output_paths[0], settings)
-            if existing:
-                return self._confirm_overwrite_sequence(existing, settings)
-        else:
-            # For video, check file existence
-            existing = self.path_manager.check_existing_files(output_paths)
-            if existing:
-                return self._confirm_overwrite_files(existing)
-        
+
+        # Validate output directory
+        if not self._validate_output_directory():
+            return False
+
+        # Check for existing files across every output
+        existing = []
+        for settings in jobs:
+            output_paths, _ = self._generate_output_paths(settings)
+            if self.current_format.is_sequence:
+                # For sequences, check if any frame files exist
+                existing.extend(self._check_sequence_files_exist(output_paths[0], settings))
+            else:
+                # For video, check file existence
+                existing.extend(os.path.basename(p)
+                                for p in self.path_manager.check_existing_files(output_paths))
+        if existing:
+            return self._confirm_overwrite(existing)
+
         return True
-    
+
     def _validate_output_directory(self) -> bool:
         """Validate and create output directory if needed"""
         if self.use_input_folder_checkbox.isChecked():
@@ -660,45 +689,20 @@ class ExportDialog(QDialog):
         
         return existing_files
     
-    def _confirm_overwrite_sequence(self, existing_files: list, settings: ExportSettings) -> bool:
-        """Confirm overwriting sequence files"""
-        files_text = "\n".join(existing_files)
-        
-        # Calculate total frames
-        total_frames = VideoInfo.total_frames
-        if settings.use_inout and settings.in_point is not None and settings.out_point is not None:
-            frame_count = settings.out_point - settings.in_point + 1
-        else:
-            frame_count = total_frames
-        
-        if len(existing_files) == 5 and frame_count > 5:
-            files_text += f"\n... (and possibly {frame_count - 5} more)"
-        
+    def _confirm_overwrite(self, existing_files: list) -> bool:
+        """Confirm overwriting existing files, from any of the outputs"""
+        files_text = "\n".join(existing_files[:8])
+        if len(existing_files) > 8:
+            files_text += f"\n... and {len(existing_files) - 8} more"
+
         reply = QMessageBox.question(
             self, "Files Exist",
-            f"Sequence files already exist:\n\n{files_text}\n\nDo you want to overwrite them?",
+            f"These files already exist:\n\n{files_text}\n\nDo you want to overwrite them?",
             QMessageBox.Yes | QMessageBox.No,
             QMessageBox.No
         )
         return reply == QMessageBox.Yes
-    
-    def _confirm_overwrite_files(self, existing_files: list) -> bool:
-        """Confirm overwriting video files"""
-        if len(existing_files) == 1:
-            message = f"The file '{os.path.basename(existing_files[0])}' already exists.\n\nDo you want to overwrite it?"
-        else:
-            files_text = "\n".join([os.path.basename(f) for f in existing_files[:5]])
-            if len(existing_files) > 5:
-                files_text += f"\n... and {len(existing_files) - 5} more files"
-            message = f"The following files already exist:\n\n{files_text}\n\nDo you want to overwrite them?"
-        
-        reply = QMessageBox.question(
-            self, "Files Exist", message,
-            QMessageBox.Yes | QMessageBox.No,
-            QMessageBox.No
-        )
-        return reply == QMessageBox.Yes
-    
+
     def _get_initial_progress_text(self, settings: ExportSettings, output_paths: list) -> str:
         """Get initial progress dialog text"""
         if self.current_format.is_sequence:
@@ -712,44 +716,66 @@ class ExportDialog(QDialog):
             return f"Exporting {len(output_paths)} videos..."
         else:
             return "Exporting video..."
-    
+
     # === Progress Handling ===
-    
+
     def _update_progress(self, value):
-        """Update progress dialog"""
+        """Update progress dialog, as a share of the whole run"""
         if self.progress_dialog:
-            self.progress_dialog.setValue(value)
-    
+            count = len(self._export_jobs)
+            self.progress_dialog.setValue((self._export_index * 100 + value) // count)
+
     def _update_status(self, message):
-        """Update status message"""
+        """Update status message, saying which output it belongs to"""
         if self.progress_dialog:
+            count = len(self._export_jobs)
+            if count > 1:
+                output_type = self._export_jobs[self._export_index].output_type
+                message = f"Output {self._export_index + 1} of {count}: {output_type}\n{message}"
             self.progress_dialog.setLabelText(message)
-    
+
     def _cancel_export(self):
-        """Cancel the export process"""
+        """Cancel the export process, including any outputs not started yet"""
+        self._export_cancelled = True
         if self.export_worker:
             self.export_worker.cancel()
-    
+
     def _export_finished(self, success, message):
-        """Handle export completion"""
-        if self.progress_dialog:
-            self.progress_dialog.close()
-            self.progress_dialog = None
-        
-        self.export_btn.setEnabled(True)
-        
-        # Show completion message
-        if success:
-            show_message_dialog(self, title="Export Complete", message=message, type="info")
-        else:
-            show_message_dialog(self, title="Export Failed", message=message, type="critical")
-        
+        """Handle one output finishing; start the next or report the run"""
         # Clean up worker
         if self.export_worker:
             self.export_worker.quit()
             self.export_worker.wait()
             self.export_worker = None
-    
+
+        count = len(self._export_jobs)
+        if count > 1:
+            message = f"{self._export_jobs[self._export_index].output_type}: {message}"
+        self._export_messages.append(message)
+
+        more_to_do = self._export_index + 1 < count
+        if success and more_to_do and not self._export_cancelled:
+            self._start_next_export()
+            return
+
+        if self.progress_dialog:
+            self.progress_dialog.close()
+            self.progress_dialog = None
+
+        self.export_btn.setEnabled(True)
+
+        # Show completion message
+        if success and not more_to_do:
+            show_message_dialog(self, title="Export Complete",
+                                message="\n\n".join(self._export_messages), type="info")
+        else:
+            skipped = count - self._export_index - 1
+            if skipped:
+                self._export_messages.append(
+                    f"{skipped} remaining output{'s' if skipped != 1 else ''} not exported.")
+            show_message_dialog(self, title="Export Failed",
+                                message="\n\n".join(self._export_messages), type="critical")
+
     # === Settings Persistence ===
     
     def _save_current_settings(self):
@@ -761,11 +787,11 @@ class ExportDialog(QDialog):
         
         # Save current UI values
         settings_mgr.set_app_setting('export_codec', self.current_format.format_id)
-        settings_mgr.set_app_setting('export_output_type', self.output_type_combo.currentText())
+        settings_mgr.set_app_setting('export_output_types', self._selected_output_types())
         settings_mgr.set_app_setting('export_use_input_folder', self.use_input_folder_checkbox.isChecked())
         settings_mgr.set_app_setting('export_filename_template', self.filename_template_edit.text())
         settings_mgr.set_app_setting('export_antialias', self.antialias_checkbox.isChecked())
-        settings_mgr.set_app_setting('export_quality', self.quantizer_spin.value())
+        settings_mgr.set_app_setting('export_quantizer', self.quantizer_spin.value())
         settings_mgr.set_app_setting('export_include_original', self.include_original_checkbox.isChecked())
         settings_mgr.set_app_setting('export_multiple', self.export_multiple_checkbox.isChecked())
         settings_mgr.set_app_setting('export_folder_path', self.folder_edit.text())
@@ -788,11 +814,13 @@ class ExportDialog(QDialog):
                 self.format_combo.setCurrentIndex(i)
                 break
 
-        # Load output type
-        output_type = settings_mgr.get_app_setting('export_output_type', 'Segmentation-Matte')
-        output_index = self.output_type_combo.findText(output_type)
-        if output_index >= 0:
-            self.output_type_combo.setCurrentIndex(output_index)
+        # Load outputs; settings saved before outputs could be combined hold a single one
+        output_types = settings_mgr.get_app_setting('export_output_types', []) or [
+            settings_mgr.get_app_setting('export_output_type', 'Segmentation-Matte')]
+        for output_type in output_types:
+            checkbox = self.output_checkboxes.get(output_type)
+            if checkbox and checkbox.isEnabled():
+                checkbox.setChecked(True)
 
         # Load other settings
         self.use_input_folder_checkbox.setChecked(
@@ -805,7 +833,7 @@ class ExportDialog(QDialog):
             settings_mgr.get_app_setting('export_antialias', False)
         )
         self.quantizer_spin.setValue(
-            settings_mgr.get_app_setting('export_quality', 14)
+            settings_mgr.get_app_setting('export_quantizer', 14)
         )
         self.include_original_checkbox.setChecked(
             settings_mgr.get_app_setting('export_include_original', False)
@@ -823,14 +851,14 @@ class ExportDialog(QDialog):
     
     # === Helper Methods ===
     
-    def _get_available_object_ids(self) -> list:
-            """Get list of available object IDs.
+    def _get_available_object_ids(self, output_types: list) -> list:
+            """Get list of available object IDs for the given outputs.
             For matting output types, reads from the matting directory on disk so
             the list reflects what was actually matted (e.g. a single combined object).
-            For all other output types, reads from point_manager as usual.
+            For all other output types, reads from point_manager as usual - which
+            is also what a mix of matting and other outputs is offered.
             """
-            output_type = self.output_type_combo.currentText()
-            if output_type in ('Matting-Matte', 'Matting-Alpha', 'Matting-BGcolor'):
+            if output_types and all(t in MATTING_TYPES for t in output_types):
                 return self._get_matting_object_ids()
             if self.parent_window and hasattr(self.parent_window, 'point_manager'):
                 points = self.parent_window.point_manager.get_all_points()
