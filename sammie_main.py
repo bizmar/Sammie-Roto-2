@@ -395,7 +395,7 @@ class SegmentationTab(QWidget):
         # Update object name
         self._update_name_display(0)
         
-        model = settings_mgr.get_session_setting("sam_model", "Base")
+        model = settings_mgr.get_session_setting("sam_model", "Large")
         if model == "Base":
             self.sam_model_combo.setCurrentIndex(0)
         elif model == "Large":

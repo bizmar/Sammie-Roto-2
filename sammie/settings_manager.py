@@ -31,7 +31,7 @@ class ApplicationSettings:
     default_object_id: int = 0
     
     # Segmentation Processing defaults
-    default_sam_model: str = "Base"
+    default_sam_model: str = "Large"
     default_holes: int = 0
     default_dots: int = 0
     default_border_fix: int = 0
@@ -138,7 +138,7 @@ class SessionSettings:
     show_all_points: bool = True  # If True, show points from all frames
     
     # Segmentation parameters
-    sam_model: str = "Base"
+    sam_model: str = "Large"
     holes: int = 0
     dots: int = 0
     border_fix: int = 0
