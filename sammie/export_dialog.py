@@ -246,19 +246,24 @@ class ExportDialog(QDialog):
         self.antialias_checkbox.setChecked(False)
         settings_layout.addRow("", self.antialias_checkbox)
         
+        # EXR only: where the matte goes. Alpha and RGBA hold the selected
+        # object, or all objects merged; layers hold every object separately.
+        self.exr_channels_combo = QComboBox()
+        self.exr_channels_combo.addItem("Alpha", "alpha")
+        self.exr_channels_combo.addItem("RGBA (matte in all four)", "rgba")
+        self.exr_channels_combo.addItem("Separate layer per object", "layers")
+        self.exr_channels_combo.setToolTip(
+            "Alpha: the selected object, or all objects merged, in the alpha channel.\n"
+            "RGBA: the same matte in red, green, blue and alpha.\n"
+            "Separate layer per object: every object in its own layer.")
+        self.exr_channels_combo.currentIndexChanged.connect(self._on_output_types_changed)
+        settings_layout.addRow("EXR Channels:", self.exr_channels_combo)
+        self.exr_channels_label = settings_layout.labelForField(self.exr_channels_combo)
+
         # Include original (EXR only)
         self.include_original_checkbox = QCheckBox("Include original frame as layer")
         self.include_original_checkbox.setVisible(False)
         settings_layout.addRow("", self.include_original_checkbox)
-
-        # EXR only: one alpha channel (the chosen object, or all merged), or a layer per object
-        self.separate_layers_checkbox = QCheckBox("Separate layer per object")
-        self.separate_layers_checkbox.setToolTip(
-            "Off: the selected object, or all objects merged, in the alpha channel.\n"
-            "On: every object in its own layer.")
-        self.separate_layers_checkbox.setVisible(False)
-        self.separate_layers_checkbox.stateChanged.connect(self._on_output_types_changed)
-        settings_layout.addRow("", self.separate_layers_checkbox)
         
         # In/Out points
         self.use_inout_checkbox = QCheckBox("Export only between in/out markers")
@@ -391,7 +396,9 @@ class ExportDialog(QDialog):
         # Include original
         show_include_original = self.current_format.supports_include_original
         self.include_original_checkbox.setVisible(show_include_original)
-        self.separate_layers_checkbox.setVisible(self.current_format.format_id == 'exr')
+        is_exr = self.current_format.format_id == 'exr'
+        self.exr_channels_combo.setVisible(is_exr)
+        self.exr_channels_label.setVisible(is_exr)
     
     def _update_object_controls(self):
         """Update object selection, per-object export and antialiasing for the ticked outputs"""
@@ -407,8 +414,11 @@ class ExportDialog(QDialog):
         if not show_multiple:
             self.export_multiple_checkbox.setChecked(False)
         
-        exr_layers = (self.current_format.format_id == 'exr'
-                      and self.separate_layers_checkbox.isChecked())
+        is_exr = self.current_format.format_id == 'exr'
+        exr_layers = is_exr and self.exr_channels_combo.currentData() == 'layers'
+        # With the matte in R, G and B there is nowhere for the original frame to go
+        self.include_original_checkbox.setEnabled(
+            not (is_exr and self.exr_channels_combo.currentData() == 'rgba'))
         if only_removal or exr_layers:
             # EXR layers always cover every object
             self.object_id_combo.setCurrentIndex(0)
@@ -544,8 +554,9 @@ class ExportDialog(QDialog):
             use_inout=use_inout,
             in_point=in_point,
             out_point=out_point,
-            include_original=self.include_original_checkbox.isChecked(),
-            separate_layers=self.separate_layers_checkbox.isChecked(),
+            include_original=(self.include_original_checkbox.isEnabled()
+                              and self.include_original_checkbox.isChecked()),
+            exr_channels=self.exr_channels_combo.currentData(),
             export_multiple=self.export_multiple_checkbox.isChecked()
         )
 
@@ -809,7 +820,7 @@ class ExportDialog(QDialog):
         settings_mgr.set_app_setting('export_antialias', self.antialias_checkbox.isChecked())
         settings_mgr.set_app_setting('export_quantizer', self.quantizer_spin.value())
         settings_mgr.set_app_setting('export_include_original', self.include_original_checkbox.isChecked())
-        settings_mgr.set_app_setting('export_separate_layers', self.separate_layers_checkbox.isChecked())
+        settings_mgr.set_app_setting('export_exr_channels', self.exr_channels_combo.currentData())
         settings_mgr.set_app_setting('export_multiple', self.export_multiple_checkbox.isChecked())
         settings_mgr.set_app_setting('export_folder_path', self.folder_edit.text())
         settings_mgr.set_app_setting('export_use_inout', self.use_inout_checkbox.isChecked())
@@ -855,9 +866,8 @@ class ExportDialog(QDialog):
         self.include_original_checkbox.setChecked(
             settings_mgr.get_app_setting('export_include_original', False)
         )
-        self.separate_layers_checkbox.setChecked(
-            settings_mgr.get_app_setting('export_separate_layers', False)
-        )
+        self.exr_channels_combo.setCurrentIndex(max(0, self.exr_channels_combo.findData(
+            settings_mgr.get_app_setting('export_exr_channels', 'alpha'))))
         self.export_multiple_checkbox.setChecked(
             settings_mgr.get_app_setting('export_multiple', False)
         )

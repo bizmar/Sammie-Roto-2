@@ -330,11 +330,13 @@ class SequenceExportWorker(BaseExportWorker):
                 exr_data = {}
                 view_options = self._get_view_options(self.settings.output_type, self.settings.antialias)
 
-                if not self.settings.separate_layers:
+                exr_channels = self.settings.exr_channels
+                if exr_channels != 'layers':
                     # The chosen object, or every object merged, baked into the
-                    # alpha channel - which Nuke reads straight into rgba.alpha.
-                    # Written on every frame, empty or not, so no frame of the
-                    # sequence is missing the channel.
+                    # alpha channel - which Nuke reads straight into rgba.alpha -
+                    # and for "rgba" into R, G and B as well, so it shows in the
+                    # viewer as it is. Written on every frame, empty or not, so
+                    # no frame of the sequence is missing the channel.
                     object_id_filter = None if self.settings.object_id == -1 else self.settings.object_id
                     mask_array = sammie.update_image(
                         frame_num, view_options, self.points,
@@ -343,9 +345,11 @@ class SequenceExportWorker(BaseExportWorker):
                     if mask_array is None:
                         mask_array = np.zeros((VideoInfo.height, VideoInfo.width), np.uint8)
                     exr_data['A'] = self._to_float_channel(mask_array)
+                    if exr_channels == 'rgba':
+                        exr_data['R'] = exr_data['G'] = exr_data['B'] = exr_data['A']
 
                 # Export each object as a layer
-                for obj_id in (all_object_ids if self.settings.separate_layers else []):
+                for obj_id in (all_object_ids if exr_channels == 'layers' else []):
                     mask_array = sammie.update_image(
                         frame_num, view_options, self.points,
                         return_numpy=True, object_id_filter=obj_id
@@ -364,8 +368,8 @@ class SequenceExportWorker(BaseExportWorker):
                         
                         exr_data[layer_name] = mask_array
                 
-                # Include original frame if requested
-                if self.settings.include_original:
+                # Include original frame if requested; "rgba" has the matte in R, G and B
+                if self.settings.include_original and exr_channels != 'rgba':
                     original_view_options = {'view_mode': 'None'}
                     original_array = sammie.update_image(
                         frame_num, original_view_options, self.points,

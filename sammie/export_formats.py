@@ -23,7 +23,7 @@ class ExportSettings:
     in_point: Optional[int]
     out_point: Optional[int]
     include_original: bool = False  # EXR only
-    separate_layers: bool = False  # EXR only: a layer per object instead of one combined alpha
+    exr_channels: str = "alpha"  # EXR only: "alpha", "rgba" (matte in all four) or "layers" (one per object)
     export_multiple: bool = False  # Video only
 
 

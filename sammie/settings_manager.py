@@ -90,7 +90,7 @@ class ApplicationSettings:
     export_use_inout: bool = True
     export_quantizer: int = 14
     export_include_original: bool = False
-    export_separate_layers: bool = False
+    export_exr_channels: str = "alpha"
     last_open_folder: str = ""
     export_multiple: bool = False
     export_folder_path: str = ""
