@@ -1,3 +1,5 @@
+> **Heads up:** this is my personal, vibe-coded, hacked-up fork of [Sammie-Roto 2](https://github.com/Zarxrax/Sammie-Roto-2), bent to fit my own workflow. It's not intended for wider release - for the real thing, grab the [original](https://github.com/Zarxrax/Sammie-Roto-2). My changes live on the [`exr-ingest`](https://github.com/bizmar/Sammie-Roto-2/tree/exr-ingest) branch.
+
 # Sammie-Roto 2
 **S**egment **A**nything **M**odel with **M**atting **I**ntegrated **E**legantly
 
