@@ -11,7 +11,7 @@ from PySide6.QtWidgets import (
     QFileDialog, QProgressDialog, QMessageBox
 )
 from PySide6.QtCore import Qt
-from sammie.core import VideoInfo
+from sammie.core import VideoInfo, input_base_name, source_frame_number, source_frame_name
 from sammie.gui_widgets import show_message_dialog
 from sammie.export_formats import FormatRegistry, ExportSettings
 from sammie.export_workers import VideoExportWorker, SequenceExportWorker
@@ -28,12 +28,17 @@ class ExportPathManager:
         """Resolve template tags to actual values"""
         # Get input file info
         input_file = self.settings_mgr.get_session_setting("video_file_path", "")
-        base_name = os.path.splitext(os.path.basename(input_file))[0] if input_file else "video"
+        base_name = input_base_name(input_file) if input_file else "video"
         
         # Get in/out points
         total_frames = VideoInfo.total_frames
-        in_point = self.settings_mgr.get_session_setting("in_point", 0)
-        out_point = self.settings_mgr.get_session_setting("out_point", total_frames - 1)
+        # Unset markers are stored as None, which the defaults here don't catch
+        in_point = self.settings_mgr.get_session_setting("in_point", None)
+        out_point = self.settings_mgr.get_session_setting("out_point", None)
+        if in_point is None:
+            in_point = 0
+        if out_point is None:
+            out_point = total_frames - 1
         
         # Get timestamp
         now = datetime.datetime.now()
@@ -57,8 +62,8 @@ class ExportPathManager:
             "codec": format_id,
             "object_id": obj_id_str,
             "object_name": sanitized_object_name,
-            "in_point": str(in_point),
-            "out_point": str(out_point),
+            "in_point": str(source_frame_number(in_point)),
+            "out_point": str(source_frame_number(out_point)),
             "date": now.strftime("%Y%m%d"),
             "time": now.strftime("%H%M%S"),
             "datetime": now.strftime("%Y%m%d_%H%M%S"),
@@ -646,9 +651,9 @@ class ExportDialog(QDialog):
         # Check first few frames
         for frame_num in range(start_frame, min(start_frame + 5, end_frame + 1)):
             if self.current_format.format_id == 'exr':
-                frame_file = f"{base_path}.{frame_num:04d}.exr"
+                frame_file = f"{base_path}.{source_frame_name(frame_num)}.exr"
             else:  # PNG
-                frame_file = f"{base_path}.{frame_num:04d}.png"
+                frame_file = f"{base_path}.{source_frame_name(frame_num)}.png"
             
             if os.path.exists(frame_file):
                 existing_files.append(os.path.basename(frame_file))

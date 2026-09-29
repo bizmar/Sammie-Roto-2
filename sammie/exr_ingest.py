@@ -21,7 +21,6 @@ Two details matter and are easy to get wrong:
     ExrConverter.convert() below.
 """
 import os
-import re
 import threading
 
 import cv2
@@ -123,18 +122,6 @@ def available_colorspaces():
         return [cs.getName() for cs in get_config().getColorSpaces()]
     except Exception:
         return []
-
-
-def source_frame_number(path):
-    """
-    The frame number embedded in a filename, or None.
-
-    Kept so exported mattes can be named back to the real frame numbers of the
-    source plates rather than to the cache's own 0-based index.
-    """
-    name = os.path.splitext(os.path.basename(path))[0]
-    match = re.search(r'(\d+)$', name)
-    return int(match.group(1)) if match else None
 
 
 def _available_memory_bytes():

@@ -1345,6 +1345,9 @@ def load_image_sequence(image_path, parent_window):
         print(f"Loaded {len(kept_indices)} of {total_to_load} frames; "
               f"{total_to_load - len(kept_indices)} could not be read.")
     core.VideoInfo.total_frames = len(kept_indices)
+    # Follows the same compaction, so a skipped file drops its number too and
+    # every frame after it keeps the right one.
+    core.record_source_frame_numbers([files_to_load[i] for i in kept_indices])
 
     if not kept_indices:
         progress_dialog.close()
@@ -1354,10 +1357,9 @@ def load_image_sequence(image_path, parent_window):
         return 0
 
     if exr_converter is not None:
-        # The cache is 0-indexed and downscaled, and neither fact is
-        # recoverable from the frames themselves. Record what they came from so
-        # an export can be named back to the real source frame numbers and, if
-        # wanted, reformatted up to source resolution.
+        # The cache is downscaled, which is not recoverable from the frames
+        # themselves. Record what they came from so an export can be
+        # reformatted up to source resolution.
         settings_mgr.set_session_setting("frame_format", "png")
         settings_mgr.set_session_setting("exr_proxy_scale", exr_converter.scale)
         settings_mgr.set_session_setting("exr_source_width", exr_converter.source_width)
@@ -1365,13 +1367,6 @@ def load_image_sequence(image_path, parent_window):
         settings_mgr.set_session_setting("exr_source_colorspace", exr_converter.source_colorspace)
         settings_mgr.set_session_setting("exr_display", exr_converter.display)
         settings_mgr.set_session_setting("exr_view", exr_converter.view)
-        # Indexed by cache position, so it has to follow the same compaction -
-        # a skipped plate must drop out of this list too, or every export after
-        # it would be named with the wrong source frame number.
-        settings_mgr.set_session_setting(
-            "exr_source_frame_numbers",
-            [exr_ingest.source_frame_number(files_to_load[i]) for i in kept_indices]
-        )
 
     progress_dialog.setValue(100)
     return core.VideoInfo.total_frames

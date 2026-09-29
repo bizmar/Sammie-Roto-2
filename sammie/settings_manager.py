@@ -106,6 +106,14 @@ class SessionSettings:
     in_point: int = None
     out_point: int = None
 
+    # The source's own frame number for each cache frame, so exports and the
+    # frame counter can use the numbers the sequence was delivered with. The
+    # cache itself stays 0-based. Empty means there is nothing to map to (a
+    # video, or a sequence whose filenames don't number every frame uniquely)
+    # and cache indices are used as they are.
+    source_frame_numbers: list = field(default_factory=list)
+    source_frame_padding: int = 0
+
     # How an EXR sequence was brought in, so proxy mattes can be mapped back
     # onto the untouched source plates. exr_proxy_scale of 0 means this session
     # did not come from EXR.
@@ -115,7 +123,6 @@ class SessionSettings:
     exr_source_colorspace: str = ""
     exr_display: str = ""
     exr_view: str = ""
-    exr_source_frame_numbers: list = field(default_factory=list)
     
     # Current state
     current_frame: int = 0

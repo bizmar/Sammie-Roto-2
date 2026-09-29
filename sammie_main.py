@@ -1624,6 +1624,10 @@ class MainWindow(QMainWindow):
         slider_layout.addWidget(self.frame_value)
         
         self.frame_slider.valueChanged.connect(self.on_frame_change)
+        # A newly loaded clip sets the range while the slider is already on 0,
+        # which emits no valueChanged, so the counter is refreshed here as well
+        # to pick up the new clip's frame numbers.
+        self.frame_slider.rangeChanged.connect(lambda *_: self._update_frame_counter())
         layout.addLayout(slider_layout)
     
     def _create_playback_controls(self, layout):
@@ -1834,9 +1838,13 @@ class MainWindow(QMainWindow):
         """Update the status bar text"""
         self.status.setText(text)
     
+    def _update_frame_counter(self):
+        """Show the current frame by the source's own number, not the cache index"""
+        self.frame_value.setText(str(core.source_frame_number(self.frame_slider.value())))
+
     def on_frame_change(self, value):
         """Handle frame slider changes"""
-        self.frame_value.setText(str(value))
+        self._update_frame_counter()
         current_frame = value
         
         # Update current_frame in point table and refresh if show_all_points is disabled

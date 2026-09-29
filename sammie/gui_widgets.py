@@ -312,9 +312,14 @@ class PointTable(QTableWidget):
         row_count = self.rowCount()
         self.insertRow(row_count)
 
+        # The frame column shows the source's own frame number; the cache index
+        # the rest of the application works in rides along as item data.
+        frame_item = QTableWidgetItem(str(core.source_frame_number(frame)))
+        frame_item.setData(Qt.UserRole, frame)
+
         # Create regular items for most columns
         items = [
-            (0, QTableWidgetItem(str(frame))),
+            (0, frame_item),
             #(2, QTableWidgetItem("➕" if positive else "➖")),
             (3, QTableWidgetItem(str(x))),
             (4, QTableWidgetItem(str(y)))
@@ -402,7 +407,7 @@ class PointTable(QTableWidget):
             if not frame_item:
                 continue
             
-            frame = int(frame_item.text())
+            frame = frame_item.data(Qt.UserRole)
             affected_frames.add(frame) # This frame will be regenerated
             
             # Get object ID from the colored widget
@@ -503,7 +508,7 @@ class PointTable(QTableWidget):
         frame_item = self.item(row, 0)
         if not frame_item:
             return None
-        frame = int(frame_item.text())
+        frame = frame_item.data(Qt.UserRole)
         
         # Get object ID
         object_id = 0

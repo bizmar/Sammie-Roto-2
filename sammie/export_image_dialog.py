@@ -8,6 +8,7 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtCore import Qt
 from sammie import sammie
+from sammie.core import input_base_name, source_frame_name
 from sammie.gui_widgets import show_message_dialog
 
 
@@ -99,10 +100,10 @@ class ImageExportDialog(QDialog):
             settings_mgr = self.parent_window.settings_mgr
             input_file = settings_mgr.get_session_setting("video_file_path", "")
             if input_file:
-                input_name = os.path.splitext(os.path.basename(input_file))[0]
+                input_name = input_base_name(input_file)
         
         # Build filename components
-        frame_num = self.frame_number
+        frame_name = source_frame_name(self.frame_number)
         output_type = self.output_type_combo.currentText().lower()
         
         # Add object info if specific object selected
@@ -112,7 +113,7 @@ class ImageExportDialog(QDialog):
         else:
             object_part = ""
         
-        return f"{input_name}_frame{frame_num:04d}_{output_type}{object_part}"
+        return f"{input_name}_frame{frame_name}_{output_type}{object_part}"
     
     def _get_default_directory(self):
         """Get default directory for save dialog"""

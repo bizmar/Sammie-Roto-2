@@ -11,7 +11,7 @@ import Imath
 from fractions import Fraction
 from PySide6.QtCore import QThread, Signal
 from sammie import sammie
-from sammie.core import VideoInfo
+from sammie.core import VideoInfo, source_frame_number, source_frame_name
 from sammie.export_formats import ExportSettings, FormatRegistry
 import re
 
@@ -43,6 +43,13 @@ class BaseExportWorker(QThread):
     
     def cancel(self):
         self.should_cancel = True
+
+    def _frame_range_msg(self) -> str:
+        """The exported range for completion messages, in the source's own numbers"""
+        if not self.settings.use_inout:
+            return ""
+        return (f" (frames {source_frame_number(self.start_frame)}"
+                f"-{source_frame_number(self.end_frame)})")
     
     def _get_view_options(self, output_type: str, antialias: bool) -> dict:
         """Get view options for rendering"""
@@ -93,7 +100,7 @@ class VideoExportWorker(BaseExportWorker):
             else:
                 self._export_single(self.output_paths[0], self.object_ids[0])
                 if not self.should_cancel:
-                    frame_range_msg = f" (frames {self.start_frame}-{self.end_frame})" if self.settings.use_inout else ""
+                    frame_range_msg = self._frame_range_msg()
                     self.finished.emit(True, f"Video exported successfully{frame_range_msg} to {self.output_paths[0]}")
         except InterruptedError as e:
             # User cancelled - emit with cancel message
@@ -131,7 +138,7 @@ class VideoExportWorker(BaseExportWorker):
         if not self.should_cancel:
             self.status_updated.emit("All exports completed successfully")
             files_text = "\n".join([os.path.basename(f) for f in exported_files])
-            frame_range_msg = f" (frames {self.start_frame}-{self.end_frame})" if self.settings.use_inout else ""
+            frame_range_msg = self._frame_range_msg()
             self.finished.emit(True, f"Successfully exported {len(exported_files)} videos{frame_range_msg}:\n{files_text}")
     
     def _export_single(self, output_path: str, object_id: int, 
@@ -313,9 +320,10 @@ class SequenceExportWorker(BaseExportWorker):
                 self._cleanup_files(exported_files)
                 raise InterruptedError("Export was cancelled by user")
             
-            self.status_updated.emit(f"Exporting frame {frame_num + 1}/{self.end_frame + 1}...")
+            self.status_updated.emit(
+                f"Exporting frame {source_frame_number(frame_num)} ({i + 1}/{self.export_frame_count})...")
             
-            frame_filename = f"{self.base_filename}.{frame_num:04d}.exr"
+            frame_filename = f"{self.base_filename}.{source_frame_name(frame_num)}.exr"
             frame_path = os.path.join(output_dir, frame_filename)
             
             try:
@@ -384,13 +392,13 @@ class SequenceExportWorker(BaseExportWorker):
                 # Re-raise cancel exception
                 raise
             except Exception as e:
-                print(f"Error exporting frame {frame_num + 1}: {e}")
+                print(f"Error exporting frame {source_frame_number(frame_num)}: {e}")
                 self._cleanup_files(exported_files)
                 raise e
         
         if not self.should_cancel:
             self.status_updated.emit("EXR sequence export completed")
-            frame_range_msg = f" (frames {self.start_frame}-{self.end_frame})" if self.settings.use_inout else ""
+            frame_range_msg = self._frame_range_msg()
             self.finished.emit(True, f"Successfully exported {len(exported_files)} EXR frames{frame_range_msg} to {output_dir}")
     
     def _export_png_sequence(self):
@@ -406,9 +414,10 @@ class SequenceExportWorker(BaseExportWorker):
                 self._cleanup_files(exported_files)
                 raise InterruptedError("Export was cancelled by user")
             
-            self.status_updated.emit(f"Exporting frame {frame_num + 1}/{self.end_frame + 1}...")
+            self.status_updated.emit(
+                f"Exporting frame {source_frame_number(frame_num)} ({i + 1}/{self.export_frame_count})...")
             
-            frame_filename = f"{self.base_filename}.{frame_num:04d}.png"
+            frame_filename = f"{self.base_filename}.{source_frame_name(frame_num)}.png"
             frame_path = os.path.join(output_dir, frame_filename)
             
             try:
@@ -433,6 +442,7 @@ class SequenceExportWorker(BaseExportWorker):
                     else:
                         bgra = cv2.cvtColor(frame_array, cv2.COLOR_RGB2BGR)
                     cv2.imwrite(frame_path, bgra, [cv2.IMWRITE_PNG_COMPRESSION, 4])
+                    exported_files.append(frame_path)
                 
                 progress = int((i + 1) / self.export_frame_count * 100)
                 self.progress_updated.emit(progress)
@@ -441,13 +451,13 @@ class SequenceExportWorker(BaseExportWorker):
                 # Re-raise cancel exception
                 raise
             except Exception as e:
-                print(f"Error exporting frame {frame_num + 1}: {e}")
+                print(f"Error exporting frame {source_frame_number(frame_num)}: {e}")
                 self._cleanup_files(exported_files)
                 raise e
         
         if not self.should_cancel:
             self.status_updated.emit("PNG sequence export completed")
-            frame_range_msg = f" (frames {self.start_frame}-{self.end_frame})" if self.settings.use_inout else ""
+            frame_range_msg = self._frame_range_msg()
             self.finished.emit(True, f"Successfully exported {len(exported_files)} PNG frames{frame_range_msg} to {output_dir}")
     
     @staticmethod

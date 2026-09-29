@@ -1,6 +1,7 @@
 # sammie/core.py
 import cv2
 import os
+import re
 import numpy as np
 import torch
 import warnings
@@ -31,6 +32,81 @@ class VideoInfo:
     fps = 0
     total_frames = 0
     color_space = 1
+
+
+# .........................................................................................
+# Source frame numbers
+# .........................................................................................
+# The frame cache is numbered from 0, and tracking, matting and the in/out
+# points all work in those indices. Anything the user reads - the frame
+# counter, exported filenames - goes through these instead, so a sequence
+# delivered as 23-71 is shown and exported as 23-71.
+
+def frame_number_from_filename(path):
+    """
+    The number at the end of a filename and how many digits it was written
+    with, or None if the name doesn't end in a number.
+    """
+    name = os.path.splitext(os.path.basename(path))[0]
+    match = re.search(r'(\d+)$', name)
+    if not match:
+        return None
+    return int(match.group(1)), len(match.group(1))
+
+
+def record_source_frame_numbers(paths):
+    """
+    Remember the source's frame number for each cache frame, in cache order.
+
+    Kept only when every file is numbered and no two share a number - otherwise
+    two exported frames could end up with the same name, and cache indices are
+    the safer fallback.
+    """
+    parsed = [frame_number_from_filename(p) for p in paths]
+    numbers = [p[0] for p in parsed] if all(parsed) else []
+    if len(set(numbers)) != len(numbers):
+        numbers = []
+    # Frames past 9999 in a 4-digit sequence grow a digit, so the narrowest
+    # width is the padding the sequence was written with.
+    padding = min(p[1] for p in parsed) if numbers else 0
+
+    settings_mgr = get_settings_manager()
+    settings_mgr.set_session_setting("source_frame_numbers", numbers)
+    settings_mgr.set_session_setting("source_frame_padding", padding)
+
+
+def source_frame_number(index):
+    """The source's own number for a cache frame, or the index if there is none."""
+    numbers = get_settings_manager().get_session_setting("source_frame_numbers", [])
+    if numbers and 0 <= index < len(numbers):
+        return numbers[index]
+    return index
+
+
+def input_base_name(path):
+    """
+    The input's filename without extension, for naming exports. A sequence is
+    opened by its first frame, so its frame number and separator are dropped -
+    otherwise every export would carry the first frame's number in its name as
+    well as its own.
+    """
+    name = os.path.splitext(os.path.basename(path))[0]
+    if get_settings_manager().get_session_setting("source_frame_numbers", []):
+        name = re.sub(r'[._-]?\d+$', '', name) or name
+    return name
+
+
+def source_frame_name(index):
+    """
+    source_frame_number() padded the way the source was, for filenames. Without
+    source numbers this is the cache index at 4 digits, as exports always were.
+    """
+    settings_mgr = get_settings_manager()
+    numbers = settings_mgr.get_session_setting("source_frame_numbers", [])
+    if numbers and 0 <= index < len(numbers):
+        padding = settings_mgr.get_session_setting("source_frame_padding", 0)
+        return f"{numbers[index]:0{padding}d}"
+    return f"{index:04d}"
 
 class DeviceManager:
     _device = None
