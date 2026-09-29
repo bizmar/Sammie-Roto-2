@@ -211,14 +211,24 @@ class ExportDialog(QDialog):
         outputs_widget = QWidget()
         outputs_grid = QGridLayout(outputs_widget)
         outputs_grid.setContentsMargins(0, 0, 0, 0)
+        self.outputs_grid = outputs_grid
+        # Each heading and row label with the outputs it stands for, so it can
+        # be hidden along with them when the format offers none of them
+        self.output_grid_labels = []
         for col, heading in enumerate(["Matte", "Alpha", "BG colour"], start=1):
-            outputs_grid.addWidget(QLabel(heading), 0, col, Qt.AlignCenter)
+            label = QLabel(heading)
+            outputs_grid.addWidget(label, 0, col, Qt.AlignCenter)
+            self.output_grid_labels.append((label, [types[col - 1] for _, types in OUTPUT_GRID], col))
         self.output_checkboxes = {}
-        for row, (label, types) in enumerate(OUTPUT_GRID, start=1):
-            outputs_grid.addWidget(QLabel(label), row, 0)
+        for row, (row_name, types) in enumerate(OUTPUT_GRID, start=1):
+            label = QLabel(row_name)
+            outputs_grid.addWidget(label, row, 0)
+            self.output_grid_labels.append((label, types, None))
             for col, output_type in enumerate(types, start=1):
                 self._add_output_checkbox(outputs_grid, output_type, row, col)
-        outputs_grid.addWidget(QLabel("Object removal"), len(OUTPUT_GRID) + 1, 0)
+        label = QLabel("Object removal")
+        outputs_grid.addWidget(label, len(OUTPUT_GRID) + 1, 0)
+        self.output_grid_labels.append((label, ['ObjectRemoval'], None))
         self._add_output_checkbox(outputs_grid, 'ObjectRemoval', len(OUTPUT_GRID) + 1, 1)
         settings_layout.addRow("Outputs:", outputs_widget)
         
@@ -345,14 +355,27 @@ class ExportDialog(QDialog):
         if not self.current_format:
             return
         
-        # Outputs this format can't produce are greyed out and unticked
+        # Outputs this format can't produce are hidden and unticked
         available = self.current_format.get_available_output_types()
         for output_type, checkbox in self.output_checkboxes.items():
             checkbox.blockSignals(True)
             checkbox.setEnabled(output_type in available)
+            checkbox.setVisible(output_type in available)
             if output_type not in available:
                 checkbox.setChecked(False)
             checkbox.blockSignals(False)
+        # Hide the heading or row label of anything left empty. Every column
+        # keeps an equal share of the width and a trailing empty column takes
+        # the share of any that are hidden, so what remains stays in place
+        # rather than spreading across the dialog.
+        hidden_columns = 0
+        for label, types, col in self.output_grid_labels:
+            shown = any(t in available for t in types)
+            label.setVisible(shown)
+            if col is not None:
+                self.outputs_grid.setColumnStretch(col, 1 if shown else 0)
+                hidden_columns += not shown
+        self.outputs_grid.setColumnStretch(len(OUTPUT_GRID[0][1]) + 1, hidden_columns)
         
         # Update UI visibility based on format capabilities
         self._update_ui_for_format()
