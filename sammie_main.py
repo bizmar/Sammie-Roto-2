@@ -2808,9 +2808,9 @@ class MainWindow(QMainWindow):
     def open_file(self):
         """Open an image file"""
         file_name, _ = QFileDialog.getOpenFileName(
-            self, 
-            "Open File", 
-            "", 
+            self,
+            "Open File",
+            self.settings_mgr.get_app_setting("last_open_folder", ""),
             "*.mp4 *.m4v *.mkv *.mov *.avi *webm *.png *.jpg *.jpeg *.bmp *.tiff *.gif *.webp *.exr"
         )
         
@@ -2854,6 +2854,12 @@ class MainWindow(QMainWindow):
 
         # Create new session
         self.settings_mgr.create_new_session(file_path)
+
+        # Remember where clips come from, whether picked, dropped or passed on
+        # the command line. Saved straight away rather than on exit, which a
+        # crash would skip.
+        self.settings_mgr.set_app_setting("last_open_folder", os.path.dirname(os.path.abspath(file_path)))
+        self.settings_mgr.save_app_settings()
         
         # Reset UI
         self.frame_slider.setRange(0, 0)

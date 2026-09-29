@@ -250,6 +250,15 @@ class ExportDialog(QDialog):
         self.include_original_checkbox = QCheckBox("Include original frame as layer")
         self.include_original_checkbox.setVisible(False)
         settings_layout.addRow("", self.include_original_checkbox)
+
+        # EXR only: one alpha channel (the chosen object, or all merged), or a layer per object
+        self.separate_layers_checkbox = QCheckBox("Separate layer per object")
+        self.separate_layers_checkbox.setToolTip(
+            "Off: the selected object, or all objects merged, in the alpha channel.\n"
+            "On: every object in its own layer.")
+        self.separate_layers_checkbox.setVisible(False)
+        self.separate_layers_checkbox.stateChanged.connect(self._on_output_types_changed)
+        settings_layout.addRow("", self.separate_layers_checkbox)
         
         # In/Out points
         self.use_inout_checkbox = QCheckBox("Export only between in/out markers")
@@ -311,6 +320,9 @@ class ExportDialog(QDialog):
         """Add one output's checkbox to the outputs grid"""
         checkbox = QCheckBox()
         checkbox.setToolTip(output_type)
+        # A checkbox with no text asks for slightly less width than the
+        # Windows 11 style draws its box in, which clips the right edge
+        checkbox.setMinimumWidth(checkbox.sizeHint().width() + 6)
         checkbox.stateChanged.connect(self._on_output_types_changed)
         grid.addWidget(checkbox, row, col, Qt.AlignCenter)
         self.output_checkboxes[output_type] = checkbox
@@ -379,6 +391,7 @@ class ExportDialog(QDialog):
         # Include original
         show_include_original = self.current_format.supports_include_original
         self.include_original_checkbox.setVisible(show_include_original)
+        self.separate_layers_checkbox.setVisible(self.current_format.format_id == 'exr')
     
     def _update_object_controls(self):
         """Update object selection, per-object export and antialiasing for the ticked outputs"""
@@ -394,8 +407,10 @@ class ExportDialog(QDialog):
         if not show_multiple:
             self.export_multiple_checkbox.setChecked(False)
         
-        if only_removal or self.current_format.format_id == 'exr':
-            # EXR sequences always export all objects as layers
+        exr_layers = (self.current_format.format_id == 'exr'
+                      and self.separate_layers_checkbox.isChecked())
+        if only_removal or exr_layers:
+            # EXR layers always cover every object
             self.object_id_combo.setCurrentIndex(0)
             self.object_id_combo.setEnabled(False)
         else:
@@ -530,6 +545,7 @@ class ExportDialog(QDialog):
             in_point=in_point,
             out_point=out_point,
             include_original=self.include_original_checkbox.isChecked(),
+            separate_layers=self.separate_layers_checkbox.isChecked(),
             export_multiple=self.export_multiple_checkbox.isChecked()
         )
 
@@ -793,6 +809,7 @@ class ExportDialog(QDialog):
         settings_mgr.set_app_setting('export_antialias', self.antialias_checkbox.isChecked())
         settings_mgr.set_app_setting('export_quantizer', self.quantizer_spin.value())
         settings_mgr.set_app_setting('export_include_original', self.include_original_checkbox.isChecked())
+        settings_mgr.set_app_setting('export_separate_layers', self.separate_layers_checkbox.isChecked())
         settings_mgr.set_app_setting('export_multiple', self.export_multiple_checkbox.isChecked())
         settings_mgr.set_app_setting('export_folder_path', self.folder_edit.text())
         settings_mgr.set_app_setting('export_use_inout', self.use_inout_checkbox.isChecked())
@@ -837,6 +854,9 @@ class ExportDialog(QDialog):
         )
         self.include_original_checkbox.setChecked(
             settings_mgr.get_app_setting('export_include_original', False)
+        )
+        self.separate_layers_checkbox.setChecked(
+            settings_mgr.get_app_setting('export_separate_layers', False)
         )
         self.export_multiple_checkbox.setChecked(
             settings_mgr.get_app_setting('export_multiple', False)

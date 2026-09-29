@@ -299,9 +299,9 @@ class SequenceExportWorker(BaseExportWorker):
             self.finished.emit(False, f"Export failed: {e}\n\n{tb}")
     
     def _export_exr_sequence(self):
-        """Export EXR frame sequence with multiple object layers"""
+        """Export EXR frame sequence, as one combined alpha or a layer per object"""
         output_dir = self.settings.output_dir
-        
+
         # Get all unique object IDs
         all_object_ids = sorted(set(point['object_id'] for point in self.points))
         if not all_object_ids:
@@ -329,25 +329,31 @@ class SequenceExportWorker(BaseExportWorker):
             try:
                 exr_data = {}
                 view_options = self._get_view_options(self.settings.output_type, self.settings.antialias)
-                
+
+                if not self.settings.separate_layers:
+                    # The chosen object, or every object merged, baked into the
+                    # alpha channel - which Nuke reads straight into rgba.alpha.
+                    # Written on every frame, empty or not, so no frame of the
+                    # sequence is missing the channel.
+                    object_id_filter = None if self.settings.object_id == -1 else self.settings.object_id
+                    mask_array = sammie.update_image(
+                        frame_num, view_options, self.points,
+                        return_numpy=True, object_id_filter=object_id_filter
+                    )
+                    if mask_array is None:
+                        mask_array = np.zeros((VideoInfo.height, VideoInfo.width), np.uint8)
+                    exr_data['A'] = self._to_float_channel(mask_array)
+
                 # Export each object as a layer
-                for obj_id in all_object_ids:
+                for obj_id in (all_object_ids if self.settings.separate_layers else []):
                     mask_array = sammie.update_image(
                         frame_num, view_options, self.points,
                         return_numpy=True, object_id_filter=obj_id
                     )
-                    
+
                     if mask_array is not None and mask_array.max() > 0:
-                        # Convert to grayscale if needed
-                        if len(mask_array.shape) == 3 and mask_array.shape[2] > 1:
-                            mask_array = mask_array[:, :, 0]
-                        
-                        # Normalize to 0-1 range
-                        if mask_array.dtype == np.uint8:
-                            mask_array = mask_array.astype(np.float32) / 255.0
-                        elif mask_array.dtype != np.float32:
-                            mask_array = mask_array.astype(np.float32)
-                        
+                        mask_array = self._to_float_channel(mask_array)
+
                         # Generate layer name
                         object_name = object_names.get(str(obj_id), "")
                         if object_name:
@@ -460,6 +466,18 @@ class SequenceExportWorker(BaseExportWorker):
             frame_range_msg = self._frame_range_msg()
             self.finished.emit(True, f"Successfully exported {len(exported_files)} PNG frames{frame_range_msg} to {output_dir}")
     
+    @staticmethod
+    def _to_float_channel(mask_array):
+        """A mask as a single 0-1 float channel"""
+        # Convert to grayscale if needed
+        if len(mask_array.shape) == 3 and mask_array.shape[2] > 1:
+            mask_array = mask_array[:, :, 0]
+
+        # Normalize to 0-1 range
+        if mask_array.dtype == np.uint8:
+            return mask_array.astype(np.float32) / 255.0
+        return mask_array.astype(np.float32)
+
     @staticmethod
     def _write_exr_file(filepath: str, data_dict: dict, color_space: int = 1):
         """Write EXR file with multiple layers"""
