@@ -1142,6 +1142,22 @@ class FrameSlider(QSlider):
         
         return pixel
     
+    def mousePressEvent(self, event):
+        """Clicking anywhere on the track jumps there, and dragging carries on from that point"""
+        if (event.button() == Qt.LeftButton and self.orientation() == Qt.Horizontal
+                and self.maximum() > self.minimum()):
+            opt = QStyleOptionSlider()
+            self.initStyleOption(opt)
+            groove = self.style().subControlRect(QStyle.CC_Slider, opt, QStyle.SC_SliderGroove, self)
+            handle = self.style().subControlRect(QStyle.CC_Slider, opt, QStyle.SC_SliderHandle, self)
+            x = int(event.position().x())
+            if not handle.contains(event.position().toPoint()):
+                self.setValue(QStyle.sliderValueFromPosition(
+                    self.minimum(), self.maximum(),
+                    x - groove.left() - handle.width() // 2,
+                    groove.width() - handle.width(), opt.upsideDown))
+        super().mousePressEvent(event)
+
     def paintEvent(self, event):
         """Custom paint event to draw range highlight and markers"""
         try:
@@ -1162,6 +1178,12 @@ class FrameSlider(QSlider):
                 QStyle.CC_Slider, opt, QStyle.SC_SliderGroove, self
             )
             
+            # Draw the track ourselves, so the in/out range tints it and the
+            # playhead (painted by the style, below) sits on top of both
+            painter.setPen(Qt.NoPen)
+            painter.setBrush(self.palette().color(QPalette.Button))
+            painter.drawRoundedRect(groove_rect, 3, 3)
+
             # Draw the highlighted range if both in and out points are set
             if self._in_point is not None and self._out_point is not None:
                 try:
@@ -1208,7 +1230,7 @@ class FrameSlider(QSlider):
         # Get colors from palette
         palette = self.palette()
         highlight_color = palette.color(QPalette.Highlight)
-        highlight_color.setAlpha(60)  # Semi-transparent
+        highlight_color.setAlpha(85)  # Semi-transparent
         
         # Draw the highlighted rectangle over the groove
         if self.orientation() == Qt.Horizontal:
@@ -1226,7 +1248,9 @@ class FrameSlider(QSlider):
                 end_pixel - start_pixel
             )
         
-        painter.fillRect(highlight_rect, highlight_color)
+        painter.setPen(Qt.NoPen)
+        painter.setBrush(highlight_color)
+        painter.drawRoundedRect(highlight_rect, 3, 3)
     
     def _draw_marker(self, painter, frame, is_in_point):
         """Draw a bracket marker for an in or out point"""

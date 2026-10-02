@@ -14,7 +14,7 @@ from pathlib import Path
 from string import Template
 
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QColor, QPalette
+from PySide6.QtGui import QColor, QFont, QPalette
 
 ICON_DIR = Path(__file__).resolve().parent / "resources" / "icons"
 
@@ -43,6 +43,17 @@ TOKENS = {
 def color(name):
     """A token as a QColor."""
     return QColor(TOKENS[name])
+
+
+def monospace_font(point_size=None):
+    """A fixed-width font that exists on the platform, for readouts and the console."""
+    font = QFont()
+    font.setFamilies(["SF Mono", "Menlo", "Consolas", "DejaVu Sans Mono", "monospace"])
+    font.setStyleHint(QFont.Monospace)
+    font.setFixedPitch(True)
+    if point_size:
+        font.setPointSize(point_size)
+    return font
 
 
 def build_palette():
@@ -145,6 +156,20 @@ QGroupBox::title {
     subcontrol-origin: margin; subcontrol-position: top left;
     left: 8px; padding: 0 4px; color: $text_dim;
 }
+
+/* ---- viewer and transport ---- */
+QGraphicsView { background: $canvas; border: 0; }
+QLabel#caption { color: $text_dim; }
+QLabel#frameReadout {
+    background: $field; border: 1px solid $hairline; border-radius: 4px;
+    padding: 2px 8px; min-width: 52px;
+}
+QSlider#timeline { min-height: 26px; }
+QSlider#timeline::groove:horizontal { height: 6px; background: transparent; }
+QSlider#timeline::handle:horizontal {
+    width: 6px; height: 20px; margin: -7px 0; background: $text; border-radius: 3px;
+}
+QSlider#timeline::handle:horizontal:hover { background: $on_accent; }
 
 /* ---- hint blocks (usage notes in the sidebar) ---- */
 QLabel#hint {

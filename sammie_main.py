@@ -1343,8 +1343,12 @@ class MainWindow(QMainWindow):
         """Create the center panel with image viewer and controls"""
         center_panel = QWidget()
         layout = QVBoxLayout(center_panel)
-        layout.setContentsMargins(5, 5, 5, 5)
-        
+        layout.setContentsMargins(8, 6, 8, 6)
+        layout.setSpacing(6)
+
+        # View selector and view options
+        self._create_viewer_toolbar(layout)
+
         # Image viewer
         self.viewer = ImageViewer(status_callback=self.update_status_bar, parent_window=self)
         layout.addWidget(self.viewer)
@@ -1457,33 +1461,69 @@ class MainWindow(QMainWindow):
         
         return self.bottom_splitter
     
+    def _create_viewer_toolbar(self, layout):
+        """Create the bar above the viewer: view selector on the left, options for that view on the right"""
+        toolbar = QHBoxLayout()
+        toolbar.setContentsMargins(0, 0, 0, 0)
+
+        # View selector
+        toolbar.addWidget(QLabel("View:"))
+        self.view_combo = QComboBox()
+        self.view_combo.setMinimumWidth(190)
+        self.view_combo.addItems([
+            "Segmentation-Edit", "Segmentation-Matte", "Segmentation-BGcolor", "Matting-Matte", "Matting-BGcolor", "ObjectRemoval"
+        ])
+
+        # Always reset the view to "Segmentation-Edit"
+        self.view_combo.setCurrentIndex(0)
+        self.settings_mgr.set_session_setting("current_view_mode", self.view_combo.currentText())
+
+        self.view_combo.currentTextChanged.connect(self.on_view_combo_changed)
+        toolbar.addWidget(self.view_combo)
+        toolbar.addStretch()
+
+        # Dynamic widgets container (checkboxes, colour picker)
+        self.dynamic_widgets_container = QWidget()
+        self.dynamic_widgets_layout = QHBoxLayout(self.dynamic_widgets_container)
+        self.dynamic_widgets_layout.setContentsMargins(0, 0, 0, 0)
+        toolbar.addWidget(self.dynamic_widgets_container)
+
+        # Initialize dynamic widget references
+        self.show_masks_checkbox = None
+        self.show_outlines_checkbox = None
+        self.antialias_checkbox = None
+        self.color_picker = None
+        self.show_removal_mask_checkbox = None
+
+        layout.addLayout(toolbar)
+
     def _create_frame_controls(self, layout):
-        """Create frame navigation controls"""
-        slider_layout = QHBoxLayout()
-        slider_layout.addWidget(QLabel("Frame:"))
-        
+        """Create the timeline scrubber and the frame readout"""
         self.frame_slider = FrameSlider(Qt.Horizontal)
+        self.frame_slider.setObjectName("timeline")
         self.frame_slider.setRange(0, 0)
         self.frame_slider.setValue(0)
-        slider_layout.addWidget(self.frame_slider)
-        
+        layout.addWidget(self.frame_slider)
+
+        # The readout is placed in the transport row below
         self.frame_value = QLabel("0")
-        self.frame_value.setMinimumWidth(50)
+        self.frame_value.setObjectName("frameReadout")
+        self.frame_value.setFont(theme.monospace_font())
         self.frame_value.setAlignment(Qt.AlignCenter)
-        slider_layout.addWidget(self.frame_value)
-        
+
         self.frame_slider.valueChanged.connect(self.on_frame_change)
         # A newly loaded clip sets the range while the slider is already on 0,
         # which emits no valueChanged, so the counter is refreshed here as well
         # to pick up the new clip's frame numbers.
         self.frame_slider.rangeChanged.connect(lambda *_: self._update_frame_counter())
-        layout.addLayout(slider_layout)
-    
+
     def _create_playback_controls(self, layout):
-        """Create playback control buttons"""
-        controls_layout = QHBoxLayout()
-        controls_layout.setSpacing(0) # reduce space between buttons, there is still some space from padding
-        
+        """Create the transport row: frame readout on the left, playback in the middle, in/out markers on the right"""
+        # Three columns; the outer two stretch equally so the transport stays centred
+        row = QGridLayout()
+        row.setColumnStretch(0, 1)
+        row.setColumnStretch(2, 1)
+
         # Button Icons
         self.icon_play = icons.icon("play")
         self.icon_pause = icons.icon("pause")
@@ -1494,7 +1534,17 @@ class MainWindow(QMainWindow):
         icon_marker_in = icons.icon("marker-in")
         icon_marker_out = icons.icon("marker-out")
 
+        # Frame readout
+        readout = QHBoxLayout()
+        caption = QLabel("Frame")
+        caption.setObjectName("caption")
+        readout.addWidget(caption)
+        readout.addWidget(self.frame_value)
+        row.addLayout(readout, 0, 0, Qt.AlignLeft | Qt.AlignVCenter)
+
         # Playback buttons
+        transport = QHBoxLayout()
+        transport.setSpacing(4)
         button_configs = [
             (icon_prev_keyframe, 40, self.prev_keyframe, "prev_keyframe", "Previous Keyframe"),
             (icon_prev, 40, self.prev_frame, "prev_frame", "Previous Frame"),
@@ -1502,73 +1552,41 @@ class MainWindow(QMainWindow):
             (icon_next, 40, self.next_frame, "next_frame", "Next Frame"),
             (icon_next_keyframe, 40, self.next_keyframe, "next_keyframe", "Next Keyframe")
         ]
-        
+
         for icon, width, handler, button_id, tooltip in button_configs:
             btn = QPushButton()
             btn.setIcon(icon)
             btn.setMaximumWidth(width)
             btn.setToolTip(tooltip)
             btn.clicked.connect(handler)
-            controls_layout.addWidget(btn)
-            
+            transport.addWidget(btn)
+
             if button_id == "play_pause":
                 self.play_pause_btn = btn
+        row.addLayout(transport, 0, 1, Qt.AlignCenter)
 
-        # Add spacing between playback controls and marker buttons
-        controls_layout.addSpacing(15)
-        
         # In/Out marker buttons
+        markers = QHBoxLayout()
+        markers.setSpacing(4)
         marker_button_configs = [
             (icon_marker_in, self.set_in_marker, "Set In Point"),
             (icon_marker_out, self.set_out_marker, "Set Out Point")
         ]
-        
+
         for icon, handler, tooltip in marker_button_configs:
             btn = QPushButton()
             btn.setIcon(icon)
-            btn.setMaximumWidth(30)
+            btn.setMaximumWidth(36)
             btn.setToolTip(tooltip)
             btn.clicked.connect(handler)
-            controls_layout.addWidget(btn)
-        
-        controls_layout.addStretch()
-        
-        # Container for view controls (checkboxes + combobox)
-        view_controls_layout = QHBoxLayout()
-        
-        # Dynamic widgets container
-        self.dynamic_widgets_container = QWidget()
-        self.dynamic_widgets_layout = QHBoxLayout(self.dynamic_widgets_container)
-        self.dynamic_widgets_layout.setContentsMargins(0, 0, 5, 0)
-        view_controls_layout.addWidget(self.dynamic_widgets_container)
-        
-        # Initialize dynamic widget references
-        self.show_masks_checkbox = None
-        self.show_outlines_checkbox = None
-        self.antialias_checkbox = None
-        self.color_picker = None
-        self.show_removal_mask_checkbox = None
+            markers.addWidget(btn)
+        row.addLayout(markers, 0, 2, Qt.AlignRight | Qt.AlignVCenter)
 
-        # View selector
-        view_controls_layout.addWidget(QLabel("View:"))
-        self.view_combo = QComboBox()
-        self.view_combo.addItems([
-            "Segmentation-Edit", "Segmentation-Matte", "Segmentation-BGcolor", "Matting-Matte", "Matting-BGcolor", "ObjectRemoval"
-        ])
+        layout.addLayout(row)
 
-        # Always reset the view to "Segmentation-Edit"
-        self.view_combo.setCurrentIndex(0)
-        self.settings_mgr.set_session_setting("current_view_mode", self.view_combo.currentText())
-
-        self.view_combo.currentTextChanged.connect(self.on_view_combo_changed)
-        view_controls_layout.addWidget(self.view_combo)
-        
-        controls_layout.addLayout(view_controls_layout)
-        layout.addLayout(controls_layout)
-        
         # Initialize dynamic widgets for the default selection
         self._update_dynamic_widgets()
-    
+
     def _on_bgcolor_changed(self, color_rgb):
         """Handle bgcolor selection"""
         self.settings_mgr.set_session_setting("bgcolor", color_rgb)

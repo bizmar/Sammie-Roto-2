@@ -53,6 +53,19 @@ def install_stubs():
         sys.modules.setdefault(name, _Stub(name))
 
 
+def create_main_window():
+    """
+    Build the real MainWindow with no network, no model loading and no session
+    restore. Needs install_stubs() and a QApplication first.
+    """
+    import sammie_main
+    from sammie import gui_widgets
+
+    gui_widgets.UpdateChecker.check_for_updates = lambda self: None
+    sammie_main.MainWindow._deferred_init = lambda self: None
+    return sammie_main.MainWindow()
+
+
 def _example_pixmap(frame_index):
     """A real video frame from examples/, so the viewer isn't empty."""
     import cv2
@@ -121,13 +134,8 @@ def main():
     os.chdir(workdir)
 
     install_stubs()
-    import sammie_main
     from PySide6.QtWidgets import QApplication
     from sammie import gui_widgets
-
-    # No network, no model loading, no session restore.
-    gui_widgets.UpdateChecker.check_for_updates = lambda self: None
-    sammie_main.MainWindow._deferred_init = lambda self: None
 
     app = QApplication(sys.argv)
     try:
@@ -137,7 +145,7 @@ def main():
     except ImportError:
         say("no theme module yet - rendering the stock look")
 
-    window = sammie_main.MainWindow()
+    window = create_main_window()
     console_text = []
     size = (args.width, args.height)
     try:

@@ -19,7 +19,8 @@ failures = []
 
 
 def check(condition, message):
-    print(("PASS  " if condition else "FAIL  ") + message)
+    # The main window redirects sys.stdout into its console widget, so write to the real one
+    sys.__stdout__.write(("PASS  " if condition else "FAIL  ") + message + "\n")
     if not condition:
         failures.append(message)
 
@@ -130,6 +131,67 @@ def check_sliders(app, mgr):
     check(rem.minimax_steps_slider.value() == 10 and rem.minimax_steps_value.text() == "10", "loading settings updates minimax steps")
 
 
+def check_timeline_and_view_bar(app):
+    from PySide6.QtCore import QPoint, Qt
+    from PySide6.QtTest import QTest
+    from PySide6.QtWidgets import QStyle, QStyleOptionSlider
+
+    window = ui_preview.create_main_window()
+    window.resize(1400, 900)
+    window.show()
+    app.processEvents()
+    slider = window.frame_slider
+
+    def handle_centre_x():
+        opt = QStyleOptionSlider()
+        slider.initStyleOption(opt)
+        return slider.style().subControlRect(QStyle.CC_Slider, opt, QStyle.SC_SliderHandle, slider).center().x()
+
+    def x_for(fraction):
+        opt = QStyleOptionSlider()
+        slider.initStyleOption(opt)
+        groove = slider.style().subControlRect(QStyle.CC_Slider, opt, QStyle.SC_SliderGroove, slider)
+        return int(groove.left() + groove.width() * fraction)
+
+    slider.blockSignals(True)  # no clip is loaded, so keep frame changes from reaching the frame cache
+    slider.setRange(0, 239)
+    for value in (0, 60, 120, 239):
+        slider.setValue(value)
+        offset = abs(slider._frame_to_pixel(value) - handle_centre_x())
+        check(offset <= 2, f"timeline: marker position for frame {value} is within 2px of the playhead ({offset}px)")
+
+    y = slider.height() // 2
+    slider.setValue(0)
+    QTest.mouseClick(slider, Qt.LeftButton, Qt.NoModifier, QPoint(x_for(0.5), y))
+    check(abs(slider.value() - 120) <= 4, f"timeline: clicking the middle of the track jumps there ({slider.value()})")
+
+    QTest.mousePress(slider, Qt.LeftButton, Qt.NoModifier, QPoint(x_for(0.1), y))
+    jumped = slider.value()
+    QTest.mouseMove(slider, QPoint(x_for(0.8), y))
+    QTest.mouseRelease(slider, Qt.LeftButton, Qt.NoModifier, QPoint(x_for(0.8), y))
+    check(abs(jumped - 24) <= 4, f"timeline: pressing at 10% jumps to about frame 24 ({jumped})")
+    check(abs(slider.value() - 191) <= 5, f"timeline: dragging on from there follows the mouse ({slider.value()})")
+
+    slider.set_in_point(30)
+    slider.set_out_point(180)
+    slider.setValue(100)
+    pixmap = slider.grab()
+    check(not pixmap.isNull(), "timeline: paints with an in/out range set")
+    slider.blockSignals(False)
+
+    # The options on the right of the view bar follow the selected view
+    window.view_combo.setCurrentText("Segmentation-BGcolor")
+    app.processEvents()
+    check(window.color_picker is not None and window.antialias_checkbox is not None, "view bar: the BG colour view shows antialias and a colour picker")
+    window.view_combo.setCurrentText("Segmentation-Edit")
+    app.processEvents()
+    check(window.show_masks_checkbox is not None and window.color_picker is None, "view bar: the edit view shows the mask and outline options")
+    window.view_combo.setCurrentText("ObjectRemoval")
+    app.processEvents()
+    check(window.show_removal_mask_checkbox is not None, "view bar: the removal view shows the mask option")
+    window.close()
+
+
 def main():
     os.chdir(tempfile.mkdtemp(prefix="sammie-ui-checks-"))  # settings are written relative to the cwd
     ui_preview.install_stubs()
@@ -144,6 +206,7 @@ def main():
     check_collapsible_group(app, mgr)
     check_sliders(app, mgr)
     check_reset_interface(app, mgr)
+    check_timeline_and_view_bar(app)
 
     sys.__stdout__.write(f"\n{len(failures)} failure(s)\n")
     return 1 if failures else 0
