@@ -7,6 +7,7 @@ This module contains reusable UI components including:
 - UpdateChecker: Checks for application updates
 - ClickableLabel: QLabel with double-click support
 - CollapsibleGroup: titled sidebar section that opens and closes
+- SegmentedControl, ViewSelector: pill-style exclusive buttons, and the view switcher built from them
 - add_slider_row: label, slider and value read-out as one row of a grid
 - HotkeysHelpDialog: Displays keyboard shortcuts
 - PointTable: Table widget for displaying segmentation points
@@ -26,7 +27,7 @@ from PySide6.QtWidgets import (
     QHeaderView, QPushButton, QWidget, QHBoxLayout, QVBoxLayout,
     QDialog, QGraphicsView, QGraphicsScene, QGraphicsPixmapItem,
     QColorDialog, QSlider, QStyleOptionSlider, QStyle, QMessageBox,
-    QApplication, QLineEdit, QFrame
+    QApplication, QLineEdit, QFrame, QButtonGroup
 )
 from PySide6.QtGui import (
     QPixmap, QMouseEvent, QWheelEvent, QPainter, QColor, QIcon,
@@ -270,6 +271,105 @@ class CollapsibleGroup(QFrame):
             self.body.layout().setContentsMargins(12, 8, 12, 12)
             self._margins_applied = True
         super().showEvent(event)
+
+
+class SegmentedControl(QFrame):
+    """A row of mutually exclusive buttons in one pill, for choosing between a few modes."""
+    selected = Signal(str)  # the key of the button the user picked
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setObjectName("segmented")
+        self._layout = QHBoxLayout(self)
+        self._layout.setContentsMargins(2, 2, 2, 2)
+        self._layout.setSpacing(2)
+        self._group = QButtonGroup(self)
+        self._group.setExclusive(True)
+        self._buttons = {}
+
+    def set_items(self, items):
+        """Replace the buttons. `items` is a list of (label, key)."""
+        for button in self._buttons.values():
+            self._group.removeButton(button)
+            self._layout.removeWidget(button)
+            button.deleteLater()
+        self._buttons = {}
+        for label, key in items:
+            button = QPushButton(label)
+            button.setProperty("segment", True)
+            button.setCheckable(True)
+            button.clicked.connect(lambda _checked=False, k=key: self.selected.emit(k))
+            self._group.addButton(button)
+            self._layout.addWidget(button)
+            self._buttons[key] = button
+
+    def keys(self):
+        return list(self._buttons)
+
+    def set_current(self, key):
+        """Check a button without emitting `selected`."""
+        if key in self._buttons:
+            self._buttons[key].setChecked(True)
+
+    def current(self):
+        return next((k for k, b in self._buttons.items() if b.isChecked()), None)
+
+
+class ViewSelector(QWidget):
+    """
+    Switches the viewer between its six views with two segmented controls: the
+    stage (Segmentation, Matting, Removal) and the mode within it.
+
+    The combo box stays the source of truth, so everything that already reads or
+    sets it keeps working; this widget only mirrors it and writes to it. The combo
+    is not shown.
+    """
+    # stage -> [(mode label, view name)]
+    STAGES = {
+        "Segmentation": [("Edit", "Segmentation-Edit"), ("Matte", "Segmentation-Matte"), ("BG Color", "Segmentation-BGcolor")],
+        "Matting": [("Matte", "Matting-Matte"), ("BG Color", "Matting-BGcolor")],
+        "Removal": [("Removal", "ObjectRemoval")],
+    }
+
+    def __init__(self, combo, parent=None):
+        super().__init__(parent)
+        self.combo = combo
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(8)
+
+        self.stage_control = SegmentedControl()
+        self.stage_control.set_items([(stage, stage) for stage in self.STAGES])
+        self.mode_control = SegmentedControl()
+        layout.addWidget(self.stage_control)
+        layout.addWidget(self.mode_control)
+
+        self.stage_control.selected.connect(self._stage_picked)
+        self.mode_control.selected.connect(self.combo.setCurrentText)
+        self.combo.currentTextChanged.connect(self._sync)
+        self._sync(self.combo.currentText())
+
+    def _stage_of(self, view):
+        return next((s for s, modes in self.STAGES.items() if any(v == view for _, v in modes)), None)
+
+    def _stage_picked(self, stage):
+        """Keep the same mode (Matte, BG Color) when the new stage has it, else take its first."""
+        modes = self.STAGES[stage]
+        current_label = next((l for s, m in self.STAGES.items() for l, v in m if v == self.combo.currentText()), None)
+        view = next((v for l, v in modes if l == current_label), modes[0][1])
+        self.combo.setCurrentText(view)
+
+    def _sync(self, view):
+        stage = self._stage_of(view)
+        if stage is None:
+            return
+        self.stage_control.set_current(stage)
+        modes = self.STAGES[stage]
+        if self.mode_control.keys() != [v for _, v in modes]:
+            self.mode_control.set_items([(label, v) for label, v in modes])
+        self.mode_control.set_current(view)
+        # Removal has a single view, so there is no mode to pick
+        self.mode_control.setVisible(len(modes) > 1)
 
 
 def add_slider_row(grid, row, label_text, minimum, maximum, value, default,

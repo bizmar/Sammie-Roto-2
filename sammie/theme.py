@@ -182,6 +182,16 @@ QSlider#timeline::handle:horizontal:hover { background: $on_accent; }
 /* ---- panels and status bar ---- */
 QLabel#panelTitle { color: $text; font-weight: 600; padding: 4px 2px; }
 
+/* ---- segmented controls ---- */
+QFrame#segmented { background: $field; border: 1px solid $hairline; border-radius: 8px; }
+QPushButton[segment="true"] {
+    background: transparent; color: $text_dim; border: 0; border-radius: 6px;
+    padding: 3px 12px; min-height: 18px;
+}
+QPushButton[segment="true"]:hover { color: $text; background: $control_pressed; }
+QPushButton[segment="true"]:checked { background: $control_hover; color: $text; }
+QPushButton[segment="true"][keyboardFocus="true"] { color: $accent_hover; }
+
 /* ---- hint blocks (usage notes in the sidebar) ---- */
 QLabel#hint {
     background: $panel; padding: 10px;

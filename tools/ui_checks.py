@@ -227,6 +227,54 @@ def check_timeline_and_view_bar(app):
     window.close()
 
 
+def check_view_selector_and_toolbar_buttons(app):
+    from PySide6.QtWidgets import QPushButton
+
+    window = ui_preview.create_main_window()
+    window.show()
+    app.processEvents()
+    selector, combo = window.view_selector, window.view_combo
+
+    def pick(control, key):
+        control._buttons[key].click()
+        app.processEvents()
+
+    check(not combo.isVisible(), "view selector: the combo box that holds the view is not shown")
+    check(selector.stage_control.current() == "Segmentation" and selector.mode_control.current() == "Segmentation-Edit", "view selector: starts on Segmentation / Edit")
+
+    pick(selector.mode_control, "Segmentation-BGcolor")
+    check(combo.currentText() == "Segmentation-BGcolor", "view selector: picking a mode sets the view")
+    check(window.color_picker is not None, "view selector: the view's options follow (colour picker)")
+
+    pick(selector.stage_control, "Matting")
+    check(combo.currentText() == "Matting-BGcolor", "view selector: switching stage keeps the same mode (BG Color)")
+    check(selector.mode_control.keys() == ["Matting-Matte", "Matting-BGcolor"], "view selector: Matting offers Matte and BG Color only")
+
+    combo.setCurrentText("Segmentation-Edit")
+    app.processEvents()
+    pick(selector.stage_control, "Matting")
+    check(combo.currentText() == "Matting-Matte", "view selector: Edit has no Matting equivalent, so Matting opens on Matte")
+
+    pick(selector.stage_control, "Removal")
+    check(combo.currentText() == "ObjectRemoval" and not selector.mode_control.isVisible(), "view selector: Removal has one view and hides the mode control")
+
+    combo.setCurrentText("Matting-Matte")  # something else changing the view, as the sidebar tabs do
+    app.processEvents()
+    check(selector.stage_control.current() == "Matting" and selector.mode_control.current() == "Matting-Matte", "view selector: follows the view when other code changes it")
+
+    calls = []
+    window.open_file = lambda: calls.append("load")
+    window.export_video = lambda: calls.append("export")
+    texts = {b.text(): b for b in window.findChildren(QPushButton)}
+    load, export = texts["Load Video"], texts["Export Video"]
+    load.click()
+    export.click()
+    check(calls == ["load", "export"], f"toolbar: Load Video and Export Video call the same handlers as the File menu ({calls})")
+    layout_x = [load.mapTo(window, load.rect().topLeft()).x(), selector.mapTo(window, selector.rect().topLeft()).x(), export.mapTo(window, export.rect().topLeft()).x()]
+    check(layout_x == sorted(layout_x), "toolbar: order is Load Video, view selector, Export Video")
+    window.close()
+
+
 def check_keyboard_focus(app):
     from PySide6.QtCore import Qt
     from PySide6.QtTest import QTest
@@ -273,6 +321,7 @@ def main():
     check_sliders(app, mgr)
     check_reset_interface_and_layout_persistence(app)
     check_timeline_and_view_bar(app)
+    check_view_selector_and_toolbar_buttons(app)
     check_keyboard_focus(app)
 
     sys.__stdout__.write(f"\n{len(failures)} failure(s)\n")

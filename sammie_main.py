@@ -41,7 +41,8 @@ from sammie.settings_manager import get_settings_manager, initialize_settings, A
 from sammie.gui_widgets import (
     ConsoleRedirect, ColorDisplayWidget, UpdateChecker, ClickableLabel,
     HotkeysHelpDialog, PointTable, ImageViewer, ColorPickerWidget,
-    FrameSlider, show_message_dialog, CollapsibleGroup, add_slider_row
+    FrameSlider, show_message_dialog, CollapsibleGroup, add_slider_row,
+    ViewSelector
 )
 
 # ==================== VERSION ====================
@@ -1462,14 +1463,21 @@ class MainWindow(QMainWindow):
         return self.bottom_splitter
     
     def _create_viewer_toolbar(self, layout):
-        """Create the bar above the viewer: view selector on the left, options for that view on the right"""
+        """Create the bar above the viewer: Load Video, the view selector, Export Video, then options for the view"""
         toolbar = QHBoxLayout()
         toolbar.setContentsMargins(0, 0, 0, 0)
+        toolbar.setSpacing(8)
 
-        # View selector
-        toolbar.addWidget(QLabel("View:"))
-        self.view_combo = QComboBox()
-        self.view_combo.setMinimumWidth(190)
+        load_btn = QPushButton("Load Video")
+        load_btn.setIcon(icons.icon("folder-open"))
+        load_btn.setToolTip("Load a video or image sequence (Ctrl+O)")
+        load_btn.clicked.connect(lambda *_: self.open_file())
+        toolbar.addWidget(load_btn)
+
+        # The combo box holds the current view and everything else reads it; it is
+        # not shown, and the segmented controls below mirror and drive it.
+        self.view_combo = QComboBox(self)
+        self.view_combo.hide()
         self.view_combo.addItems([
             "Segmentation-Edit", "Segmentation-Matte", "Segmentation-BGcolor", "Matting-Matte", "Matting-BGcolor", "ObjectRemoval"
         ])
@@ -1479,7 +1487,14 @@ class MainWindow(QMainWindow):
         self.settings_mgr.set_session_setting("current_view_mode", self.view_combo.currentText())
 
         self.view_combo.currentTextChanged.connect(self.on_view_combo_changed)
-        toolbar.addWidget(self.view_combo)
+        self.view_selector = ViewSelector(self.view_combo)
+        toolbar.addWidget(self.view_selector)
+
+        export_btn = QPushButton("Export Video")
+        export_btn.setIcon(icons.icon("export"))
+        export_btn.setToolTip("Export the video or image sequence (Ctrl+E)")
+        export_btn.clicked.connect(lambda *_: self.export_video())
+        toolbar.addWidget(export_btn)
         toolbar.addStretch()
 
         # Dynamic widgets container (checkboxes, colour picker)
