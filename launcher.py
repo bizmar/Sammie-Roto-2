@@ -14,6 +14,7 @@ import argparse
 import os
 import traceback
 from sammie.resources import resources
+from sammie import theme
 
 def show_splash(app):
     splash_pix = QPixmap(":/splash.webp")
@@ -135,6 +136,9 @@ if __name__ == "__main__":
 
     app = QApplication(sys.argv)
     app.setWindowIcon(QIcon(":/icon.ico"))
+    # The app is always dark, whatever the operating system's light/dark setting.
+    # Applied before anything is shown, so the splash and message boxes match.
+    theme.apply_theme(app)
     
     # Check for single instance
     lock_file, is_first = check_single_instance()

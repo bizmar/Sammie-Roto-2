@@ -311,6 +311,48 @@ def check_point_delete_buttons(app):
     window.close()
 
 
+def check_dark_whatever_the_system_says(app):
+    from PySide6.QtCore import Qt
+    from PySide6.QtWidgets import QPushButton
+
+    def is_dark():
+        return app.palette().color(app.palette().ColorRole.Window).lightness() < 60
+
+    hints = app.styleHints()
+    hints.setColorScheme(Qt.ColorScheme.Light)   # as if Windows were set to light mode
+    app.processEvents()
+    from sammie import theme
+    theme.apply_theme(app)
+    app.processEvents()
+    # (The colour scheme hint itself, which darkens the native title bar, is not
+    # reported by the offscreen platform, so it can only be checked on a real desktop.)
+    check(is_dark(), "dark mode: the window colour is dark under a light system setting")
+
+    button = QPushButton("probe")
+    button.show()
+    app.processEvents()
+    pixel = button.grab().toImage().pixelColor(2, button.height() // 2)
+    check(pixel.lightness() < 90, f"dark mode: a push button draws dark under a light system setting (lightness {pixel.lightness()})")
+    button.close()
+
+    hints.setColorScheme(Qt.ColorScheme.Light)   # Windows flips to light while the app is open
+    app.processEvents()
+    check(is_dark(), "dark mode: the palette stays dark if the system switches to light while running")
+
+
+def check_entry_points_apply_theme():
+    """
+    The app is normally started through launcher.py, which makes its own
+    QApplication and never runs sammie_main.main(). Any file that creates the
+    QApplication has to apply the theme, or the app shows in the system's
+    light or dark style instead.
+    """
+    for name in ("launcher.py", "sammie_main.py"):
+        source = (ui_preview.REPO / name).read_text(encoding="utf-8")
+        if "QApplication(" in source:
+            check("theme.apply_theme(app)" in source, f"entry point: {name} creates the QApplication and applies the theme")
+
+
 def check_keyboard_focus(app):
     from PySide6.QtCore import Qt
     from PySide6.QtTest import QTest
@@ -360,6 +402,8 @@ def main():
     check_view_selector_and_toolbar_buttons(app)
     check_point_delete_buttons(app)
     check_keyboard_focus(app)
+    check_dark_whatever_the_system_says(app)
+    check_entry_points_apply_theme()
 
     sys.__stdout__.write(f"\n{len(failures)} failure(s)\n")
     return 1 if failures else 0
