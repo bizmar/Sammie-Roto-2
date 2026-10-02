@@ -41,7 +41,7 @@ from sammie.settings_manager import get_settings_manager, initialize_settings, A
 from sammie.gui_widgets import (
     ConsoleRedirect, ColorDisplayWidget, UpdateChecker, ClickableLabel,
     HotkeysHelpDialog, PointTable, ImageViewer, ColorPickerWidget,
-    FrameSlider, show_message_dialog, CollapsibleGroup, add_slider_row,
+    FrameSlider, show_message_dialog, show_painted, CollapsibleGroup, add_slider_row,
     ViewSelector
 )
 
@@ -1066,8 +1066,7 @@ class MainWindow(QMainWindow):
         progress = QProgressDialog("Loading...", None, 0, 0, self)
         progress.setWindowTitle("Please Wait")
         progress.setModal(True)
-        progress.show()
-        QApplication.processEvents()
+        show_painted(progress)
         core.DeviceManager.setup_device()
         self.sam_manager.load_segmentation_model(parent_window=self)
         QApplication.processEvents()
@@ -2117,8 +2116,7 @@ class MainWindow(QMainWindow):
         progress = QProgressDialog("Loading...", None, 0, 0, self)
         progress.setWindowTitle("Please Wait")
         progress.setModal(True)
-        progress.show()
-        QApplication.processEvents()
+        show_painted(progress)
 
         self.sam_manager.unload_segmentation_model()
         QApplication.processEvents()
@@ -2287,8 +2285,7 @@ class MainWindow(QMainWindow):
             progress = QProgressDialog("Loading...", None, 0, 0, self)
             progress.setWindowTitle("Please Wait")
             progress.setModal(True)
-            progress.show()
-            QApplication.processEvents()
+            show_painted(progress)
             self.sam_manager.offload_model_to_cpu()
             QApplication.processEvents()
             try:
@@ -2311,8 +2308,7 @@ class MainWindow(QMainWindow):
                 progress = QProgressDialog("Loading...", None, 0, 0, self)
                 progress.setWindowTitle("Please Wait")
                 progress.setModal(True)
-                progress.show()
-                QApplication.processEvents()
+                show_painted(progress)
                 self.settings_mgr.save_session_settings()
                 self.matany_manager.unload_matting_model()
                 QApplication.processEvents()
@@ -2353,8 +2349,7 @@ class MainWindow(QMainWindow):
                 progress = QProgressDialog("Loading...", None, 0, 0, self)
                 progress.setWindowTitle("Please Wait")
                 progress.setModal(True)
-                progress.show()
-                QApplication.processEvents()
+                show_painted(progress)
                 self.removal_manager.unload_minimax_model()
                 QApplication.processEvents()
                 self.sam_manager.load_model_to_device()

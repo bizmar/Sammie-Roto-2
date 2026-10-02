@@ -21,7 +21,7 @@ from sammie import exr_ingest
 from sammie.smooth import run_smoothing_model, prepare_smoothing_model
 from sammie.duplicate_frame_handler import replace_similar_matte_frames
 from sammie.settings_manager import get_settings_manager
-from sammie.gui_widgets import show_message_dialog
+from sammie.gui_widgets import show_message_dialog, show_painted
 from sammie.model_downloader import ensure_models
 
 smoothing_model = None  # global variable needed to avoid complexity of passing the model around
@@ -382,7 +382,7 @@ class SamManager:
             progress_dialog.setWindowTitle("Progress")
             progress_dialog.setWindowModality(Qt.WindowModal)
             progress_dialog.setAutoClose(True)
-            progress_dialog.show()
+            show_painted(progress_dialog)
 
         last_frame_idx = None
         cancelled = False
@@ -957,7 +957,7 @@ def load_video(video_file, parent_window):
     progress_dialog.setWindowTitle("Progress")
     progress_dialog.setWindowModality(Qt.WindowModal)
     progress_dialog.setAutoClose(True)
-    progress_dialog.show()
+    show_painted(progress_dialog)
 
     container = av.open(video_file)
     stream = container.streams.video[0]
@@ -1190,7 +1190,7 @@ def load_image_sequence(image_path, parent_window):
     progress_dialog.setWindowTitle("Progress")
     progress_dialog.setWindowModality(Qt.WindowModal)
     progress_dialog.setAutoClose(True)
-    progress_dialog.show()
+    show_painted(progress_dialog)
 
     settings_mgr = get_settings_manager()
     app_frame_format = settings_mgr.get_app_setting("frame_format", "png")
@@ -1428,8 +1428,7 @@ def load_project(file_name, parent_window):
         progress.setCancelButton(None)
         progress.setWindowModality(Qt.WindowModal)
         progress.setMinimumDuration(0)
-        progress.show()
-        QApplication.processEvents()
+        show_painted(progress)
 
         with zipfile.ZipFile(file_name, 'r') as zipf:
             for i, file_name in enumerate(file_list):
@@ -1468,8 +1467,7 @@ def save_project(file_name, parent_window):
     progress.setWindowTitle("Creating Backup")
     progress.setWindowModality(Qt.WindowModal)
     progress.setMinimumDuration(0)
-    progress.show()
-    QApplication.processEvents()
+    show_painted(progress)
 
     try:
         with zipfile.ZipFile(file_name, 'w', zipfile.ZIP_STORED) as zipf:

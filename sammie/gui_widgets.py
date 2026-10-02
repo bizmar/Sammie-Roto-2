@@ -19,6 +19,7 @@ This module contains reusable UI components including:
 import os
 import shutil
 import threading
+import time
 import requests
 from packaging import version
 import weakref
@@ -1425,6 +1426,27 @@ class FrameSlider(QSlider):
             painter.drawLine(pixel_pos, y_top, pixel_pos, y_bottom)  # Vertical line
             painter.drawLine(pixel_pos - bracket_width, y_top, pixel_pos, y_top)  # Top horizontal
             painter.drawLine(pixel_pos - bracket_width, y_bottom, pixel_pos, y_bottom)  # Bottom horizontal
+
+def show_painted(window, timeout=0.5):
+    """
+    Show a window and return only once it has painted.
+
+    Progress windows are usually followed straight away by long work on the
+    same thread. Until Windows has put a new window on screen and it has
+    painted once, it shows as a blank white rectangle - a white flash on the
+    dark theme that lasts as long as the work does. Putting it on screen takes
+    a few milliseconds, so a single processEvents() call comes too early.
+    """
+    window.show()
+    deadline = time.perf_counter() + timeout
+    while time.perf_counter() < deadline:
+        handle = window.windowHandle()
+        if handle is not None and handle.isExposed():
+            break
+        QApplication.processEvents()
+    window.repaint()
+    QApplication.processEvents()
+
 
 def show_message_dialog(parent_widget, title: str, message: str, type: str):
     """Shows a configurable information/error dialog."""

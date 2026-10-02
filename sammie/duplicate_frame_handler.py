@@ -6,6 +6,7 @@ from tqdm import tqdm
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QProgressDialog, QApplication
 from sammie.settings_manager import get_settings_manager
+from sammie.gui_widgets import show_painted
 
 # Resolve absolute path of file back to project root folder
 utils_dir = os.path.dirname(os.path.abspath(__file__))
@@ -147,7 +148,7 @@ def replace_similar_matte_frames(parent_window, dedupe_min_threshold):
     progress_dialog.setWindowTitle("Progress")
     progress_dialog.setWindowModality(Qt.WindowModal)
     progress_dialog.setAutoClose(True)
-    progress_dialog.show()
+    show_painted(progress_dialog)
     
     while True:
         similar_frames = []

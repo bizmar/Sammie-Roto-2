@@ -10,6 +10,7 @@ from PySide6.QtCore import Qt
 from sammie import core
 from sammie.settings_manager import get_settings_manager
 from sammie.model_downloader import ensure_models
+from sammie.gui_widgets import show_painted
 
 
 class MattingManager:
@@ -143,7 +144,7 @@ class MattingManager:
         progress_dialog.setWindowTitle("Matting Progress")
         progress_dialog.setWindowModality(Qt.WindowModal)
         progress_dialog.setAutoClose(True)
-        progress_dialog.show()
+        show_painted(progress_dialog)
         pbar = tqdm(total=total_operations, desc="Matting Progress", unit=unit)
         return progress_dialog, pbar
 

@@ -12,6 +12,7 @@ from PySide6.QtCore import Qt
 from sammie import core
 from sammie.settings_manager import get_settings_manager
 from sammie.model_downloader import ensure_models
+from sammie.gui_widgets import show_painted
 
 
 class RemovalManager:
@@ -151,7 +152,7 @@ class RemovalManager:
         # Create progress dialog
         progress_dialog = QProgressDialog("Loading MiniMax-Remover model...", "Cancel", 0, 0, parent_window)
         progress_dialog.setWindowTitle("Object Removal Progress")
-        progress_dialog.show()
+        show_painted(progress_dialog)
         print(f"Loading MiniMax-Remover model to {device} with resolution {resized_w}x{resized_h}...")
         QApplication.processEvents()
 
@@ -452,7 +453,7 @@ class RemovalManager:
         progress_dialog.setWindowTitle("Object Removal Progress")
         progress_dialog.setWindowModality(Qt.WindowModal)
         progress_dialog.setAutoClose(True)
-        progress_dialog.show()
+        show_painted(progress_dialog)
 
         # Terminal progress bar
         tqdm_bar = tqdm(total=frame_count, desc="Object Removal", unit="frame", ncols=80)
