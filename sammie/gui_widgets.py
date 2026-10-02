@@ -1289,6 +1289,14 @@ class FrameSlider(QSlider):
                     self.minimum(), self.maximum(),
                     x - groove.left() - handle.width() // 2,
                     groove.width() - handle.width(), opt.upsideDown))
+                # Pass the press on as if it landed on the playhead. Rounding
+                # can leave the thin playhead a pixel or two short of the
+                # click, and QSlider would then treat it as a press beside the
+                # handle: a page step of 10 frames, and no drag.
+                self.initStyleOption(opt)
+                handle = self.style().subControlRect(QStyle.CC_Slider, opt, QStyle.SC_SliderHandle, self)
+                event = QMouseEvent(event.type(), QPointF(handle.center()), event.globalPosition(),
+                                    event.button(), event.buttons(), event.modifiers())
         super().mousePressEvent(event)
 
     def paintEvent(self, event):
