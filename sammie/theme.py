@@ -34,6 +34,7 @@ TOKENS = {
     "accent_hover": "#3a9bff",
     "on_accent": "#ffffff",
     "danger": "#ff6b6b",
+    "positive": "#30d158",
     "radius": "6px",
     "radius_panel": "8px",
 }
@@ -102,6 +103,7 @@ QPushButton {
     background: $control; color: $text;
     border: 1px solid $hairline; border-radius: $radius;
     padding: 4px 8px; min-height: 18px;
+    qproperty-iconSize: 18px 18px;
 }
 QPushButton:hover { background: $control_hover; }
 QPushButton:pressed { background: $control_pressed; }
@@ -128,7 +130,7 @@ QCheckBox::indicator {
 QCheckBox::indicator:hover { border-color: $text_dim; }
 QCheckBox::indicator:checked {
     background: $accent; border-color: $accent;
-    image: url("$icon_dir/check.svg");
+    image: url("$icon_dir/indicator-check.svg");
 }
 QCheckBox::indicator:disabled { border-color: $control_hover; background: $panel; }
 QCheckBox::indicator:checked:disabled { background: $control_hover; border-color: $control_hover; }

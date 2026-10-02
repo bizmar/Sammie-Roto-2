@@ -31,6 +31,7 @@ from sammie import core
 from sammie import matting
 from sammie import removal
 from sammie import theme
+from sammie import icons
 from sammie.export_image_dialog import ImageExportDialog
 from sammie.export_dialog import ExportDialog
 from sammie.settings_dialog import SettingsDialog
@@ -224,17 +225,14 @@ class SegmentationTab(QWidget):
         directional_layout = QHBoxLayout()
         directional_layout.setSpacing(0)  # reduce space between buttons, matching playback controls
 
-        play_pixmap = QPixmap(":/icons/control-play.png")
-        play_pixmap_flipped = QPixmap.fromImage(play_pixmap.toImage().mirrored(True, False))
-
         directional_button_configs = [
-            (QIcon(":/icons/control-step-left.png"), "track_one_frame_backward_btn",
+            (icons.icon("step-back"), "track_one_frame_backward_btn",
             "Track one frame backward from the current frame"),
-            (QIcon(play_pixmap_flipped), "track_backward_btn",
+            (icons.icon("play-back"), "track_backward_btn",
             "Track backward from the current frame to the in point (or start of video)"),
-            (QIcon(play_pixmap), "track_forward_btn",
+            (icons.icon("play"), "track_forward_btn",
             "Track forward from the current frame to the out point (or end of video)"),
-            (QIcon(":/icons/control-step-right.png"), "track_one_frame_forward_btn",
+            (icons.icon("step-forward"), "track_one_frame_forward_btn",
             "Track one frame forward from the current frame"),
         ]
 
@@ -374,7 +372,7 @@ class SegmentationTab(QWidget):
     def update_tracking_status_helper(self, propagated):
         """Update the Track Objects button icon based on propagation state"""
         if propagated:
-            self.track_objects_btn.setIcon(QIcon(":/icons/check-small.png"))
+            self.track_objects_btn.setIcon(icons.icon("check"))
         else:
             self.track_objects_btn.setIcon(QIcon())
             self.deduplicate_masks_btn.setIcon(QIcon())
@@ -382,7 +380,7 @@ class SegmentationTab(QWidget):
     def update_deduplicate_status_helper(self, deduplicated):
         """Update the Deduplicate button text based on deduplication status"""
         if deduplicated:
-            self.deduplicate_masks_btn.setIcon(QIcon(":/icons/check-small.png"))
+            self.deduplicate_masks_btn.setIcon(icons.icon("check"))
         else:
             self.deduplicate_masks_btn.setIcon(QIcon())
 
@@ -745,7 +743,7 @@ class MattingTab(QWidget):
     def update_matting_status(self, is_propagated):
         """Update the Run Matting button text based on propagation state"""
         if is_propagated:
-            self.run_matting_btn.setIcon(QIcon(":/icons/check-small.png"))
+            self.run_matting_btn.setIcon(icons.icon("check"))
         else:
             self.run_matting_btn.setIcon(QIcon())
 
@@ -1127,7 +1125,7 @@ class ObjectRemovalTab(QWidget):
     def update_removal_status(self, is_completed):
         """Update the Run Object Removal button text based on completion state"""
         if is_completed:
-            self.run_removal_btn.setIcon(QIcon(":/icons/check-small.png"))
+            self.run_removal_btn.setIcon(icons.icon("check"))
             #self.run_removal_btn.setText("Run Object Removal ✅")
         else:
             self.run_removal_btn.setIcon(QIcon())
@@ -1637,14 +1635,14 @@ class MainWindow(QMainWindow):
         controls_layout.setSpacing(0) # reduce space between buttons, there is still some space from padding
         
         # Button Icons
-        self.icon_play = QIcon(":/icons/control-play.png")
-        self.icon_pause = QIcon(":/icons/control-pause.png")
-        icon_prev = QIcon(":/icons/control-step-left.png")
-        icon_next = QIcon(":/icons/control-step-right.png")
-        icon_prev_keyframe = QIcon(":/icons/key-arrow-left.png")
-        icon_next_keyframe = QIcon(":/icons/key-arrow-right.png")
-        icon_marker_in = QIcon(":/icons/marker-in.png")
-        icon_marker_out = QIcon(":/icons/marker-out.png")
+        self.icon_play = icons.icon("play")
+        self.icon_pause = icons.icon("pause")
+        icon_prev = icons.icon("step-back")
+        icon_next = icons.icon("step-forward")
+        icon_prev_keyframe = icons.icon("keyframe-prev")
+        icon_next_keyframe = icons.icon("keyframe-next")
+        icon_marker_in = icons.icon("marker-in")
+        icon_marker_out = icons.icon("marker-out")
 
         # Playback buttons
         button_configs = [

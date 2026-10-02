@@ -34,6 +34,7 @@ from PySide6.QtCore import (
 )
 
 from sammie import core
+from sammie import icons
 from sammie.settings_manager import get_settings_manager
 
 # ==================== CONSOLE REDIRECT ====================
@@ -332,9 +333,9 @@ class PointTable(QTableWidget):
         # Set icon for positive/negative column
         type_item = QTableWidgetItem()
         if positive:
-            type_item.setIcon(QIcon(":/icons/plus.png"))
+            type_item.setIcon(icons.icon("plus", color="positive"))
         else:
-            type_item.setIcon(QIcon(":/icons/minus.png"))
+            type_item.setIcon(icons.icon("minus", color="danger"))
         self.setItem(row_count, 2, type_item)
 
         # Store the boolean value in the item's user data
