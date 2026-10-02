@@ -1,4 +1,20 @@
-> **Heads up:** this is my personal, vibe-coded, hacked-up fork of [Sammie-Roto 2](https://github.com/Zarxrax/Sammie-Roto-2), bent to fit my own workflow. It's not intended for wider release - for the real thing, grab the [original](https://github.com/Zarxrax/Sammie-Roto-2).
+<div align="center">
+
+# ⚠️ PERSONAL FORK - FOR MY OWN USE ONLY ⚠️
+
+</div>
+
+> [!CAUTION]
+> ## This is a personal, vibe-coded, hacked-up fork. It is not meant for anyone else.
+>
+> This is my own fork of [Sammie-Roto 2](https://github.com/Zarxrax/Sammie-Roto-2), bent to fit my own workflow.
+>
+> - 🤖 **Vibe-coded.** Written quickly with AI assistance, with little review or testing. Expect bugs, rough edges and breaking changes.
+> - 🔧 **Hacked up for one workflow.** It does what I need, which may not be what you need.
+> - 🚫 **Not intended for wider release.** Don't rely on it, and don't treat it as a supported build.
+> - ✅ **Want the real thing? Use the original: [Zarxrax/Sammie-Roto-2](https://github.com/Zarxrax/Sammie-Roto-2).**
+
+---
 
 # Sammie-Roto 2
 **S**egment **A**nything **M**odel with **M**atting **I**ntegrated **E**legantly
