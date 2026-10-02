@@ -100,3 +100,14 @@ Combining A and B is the likely end result, but let the evidence from Step 1 dec
 2. Which launch method(s) show it.
 3. Which fix removed it, and whether the splash still behaves (on top, no taskbar button, not stealing focus).
 4. Whether the `.bat` to `uvw.exe` shortcut change turned out to matter.
+
+## Result (tested on the Windows machine, 2026-10-02)
+
+Measured with an external watcher instead of an in-process poller: a separate script took a snapshot of every top-level window on the desktop, launched Sammie, and logged every window from any process that appeared or changed, every millisecond. That also sees windows owned by `uvw.exe`, `cmd.exe` or Windows Terminal, which a poller inside `launcher.py` cannot. No temporary code went into `launcher.py`.
+
+1. **The window that flashes is Windows Terminal hosting the console of `run_sammie.bat`.** Class `CASCADIA_HOSTING_WINDOW_CLASS`, process `WindowsTerminal.exe`, 1008x524 at a cascaded position (not centred), visible from 0.38 s to 0.50 s after launch - about 0.12 s, gone before it draws anything, which is why it reads as a shadow with a see-through middle. The splash followed at 1.75 s.
+2. **Only the old desktop shortcut shows it** (Target `run_sammie.bat`). Launching `.uv\uvw.exe run --no-sync launcher.py` directly, or through a shortcut that does, shows no window at all before the splash: the first window is the splash (`Qt693QWindowIcon`, 640x400, centred) at about 1.46 s, in every run. `python.exe launcher.py` from a terminal was not tried; it is not how the app is started.
+3. **The fix was the shortcut change already in `manage.py`.** The user's existing shortcut was recreated with `python -c "import manage; manage.create_windows_shortcut()"`, after which two launches showed nothing before the splash. Candidate fixes A, B and C to the splash were not needed and were not made, so the splash behaves exactly as before. One observation for later: because `show_splash()` replaces the flags with `Qt.Window | ...`, the splash's native window has `WS_EX_TOPMOST` but not `WS_EX_TOOLWINDOW`, so it is an ordinary top-level window while loading - fix A would change that if it ever matters.
+4. **The `.bat` to `uvw.exe` change mattered: it is the whole fix.** The earlier note that the flash was "probably not" the console was wrong only because the user's shortcut had not been recreated yet. Starting without the `.bat` also brings the splash up about 0.3 s sooner.
+
+`tools/ui_checks.py` was not changed. On Windows 88 of its 89 checks pass, the splash-first checks included. The one failure, "Reset Interface restores the default splitter sizes" (`[1406, 290]`), already failed before this work and is unrelated.
