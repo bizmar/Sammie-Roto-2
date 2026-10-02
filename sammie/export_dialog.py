@@ -196,7 +196,7 @@ class ExportDialog(QDialog):
     
     def _create_settings_section(self, layout):
         """Create export settings section"""
-        settings_group = QGroupBox("Format & Settings")
+        settings_group = QGroupBox("Format && Settings")
         settings_layout = QFormLayout(settings_group)
         
         # Format selection

@@ -1404,20 +1404,22 @@ class MainWindow(QMainWindow):
         # Add labels to identify each panel
         point_header_layout = QHBoxLayout()
         point_label = QLabel("Segmentation Point List")
-        point_label.setStyleSheet("font-weight: bold; padding: 3px;")
+        point_label.setObjectName("panelTitle")
         point_header_layout.addWidget(point_label)
         
         console_label = QLabel("Console")
-        console_label.setStyleSheet("font-weight: bold; padding: 3px;")
+        console_label.setObjectName("panelTitle")
         console_layout.addWidget(console_label)
 
         # Add show_all_points toggle button
         self.show_all_points_btn = QPushButton("Show All Frames")
         self.show_all_points_btn.setCheckable(True)
-        # Specific styling to overwrite the default blue check toggle
+        # Its state is shown in its text, so don't light it up like a selected button
         self.show_all_points_btn.setStyleSheet("""
             QPushButton:checked {
                 background-color: palette(button);
+                border-color: palette(mid);
+                color: palette(button-text);
             }
         """)
         self.show_all_points_btn.setToolTip("Toggle to show all points for all frames or just the points for the currently displayed frame")
@@ -1445,9 +1447,7 @@ class MainWindow(QMainWindow):
         self.console.setReadOnly(True)
         console_layout.addWidget(self.console)
         
-        console_font = QFont("Consolas")  # Try Consolas first
-        console_font.setStyleHint(QFont.Monospace)  # Fallback to system monospace
-        self.console.setFont(console_font)
+        self.console.setFont(theme.monospace_font())
         
         # Add containers to splitter
         self.bottom_splitter.addWidget(point_container)

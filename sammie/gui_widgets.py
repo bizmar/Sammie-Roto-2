@@ -278,7 +278,6 @@ def add_slider_row(grid, row, label_text, minimum, maximum, value, default,
     label.setToolTip(f"Double-click to reset to default value ({display(default)})")
 
     slider = QSlider(Qt.Horizontal)
-    slider.setObjectName("inspectorSlider")
     slider.setRange(minimum, maximum)
     slider.setValue(value)
     if tooltip:

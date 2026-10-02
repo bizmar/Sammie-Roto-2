@@ -154,7 +154,7 @@ QGroupBox {
 }
 QGroupBox::title {
     subcontrol-origin: margin; subcontrol-position: top left;
-    left: 8px; padding: 0 4px; color: $text_dim;
+    left: 8px; padding: 0 4px; color: $text; font-weight: 600;
 }
 
 /* ---- viewer and transport ---- */
@@ -165,11 +165,15 @@ QLabel#frameReadout {
     padding: 2px 8px; min-width: 52px;
 }
 QSlider#timeline { min-height: 26px; }
-QSlider#timeline::groove:horizontal { height: 6px; background: transparent; }
+QSlider#timeline::groove:horizontal { height: 6px; background: transparent; border-radius: 0; }
+QSlider#timeline::sub-page:horizontal { background: transparent; }
 QSlider#timeline::handle:horizontal {
     width: 6px; height: 20px; margin: -7px 0; background: $text; border-radius: 3px;
 }
 QSlider#timeline::handle:horizontal:hover { background: $on_accent; }
+
+/* ---- panels and status bar ---- */
+QLabel#panelTitle { color: $text; font-weight: 600; padding: 4px 2px; }
 
 /* ---- hint blocks (usage notes in the sidebar) ---- */
 QLabel#hint {
@@ -189,15 +193,15 @@ QPushButton#sectionHeader, QPushButton#sectionHeader:checked {
 QPushButton#sectionHeader:hover { background: $control_pressed; }
 QPushButton#sectionHeader:pressed { background: $control_pressed; }
 
-/* ---- inspector sliders ---- */
-QSlider#inspectorSlider { min-height: 20px; }
-QSlider#inspectorSlider::groove:horizontal { height: 4px; background: $control_hover; border-radius: 2px; }
-QSlider#inspectorSlider::sub-page:horizontal { background: $accent; border-radius: 2px; }
-QSlider#inspectorSlider::handle:horizontal {
+/* ---- sliders (the timeline overrides these below) ---- */
+QSlider:horizontal { min-height: 20px; }
+QSlider::groove:horizontal { height: 4px; background: $control_hover; border-radius: 2px; }
+QSlider::sub-page:horizontal { background: $accent; border-radius: 2px; }
+QSlider::handle:horizontal {
     background: $text; width: 12px; height: 12px; margin: -4px 0; border-radius: 6px;
 }
-QSlider#inspectorSlider::handle:horizontal:hover { background: $on_accent; }
-QSlider#inspectorSlider::sub-page:horizontal:disabled { background: $text_off; }
+QSlider::handle:horizontal:hover { background: $on_accent; }
+QSlider::sub-page:horizontal:disabled { background: $text_off; }
 QLabel#sliderValue {
     color: $text; background: $field;
     border: 1px solid $hairline; border-radius: 4px;
@@ -238,7 +242,7 @@ QScrollBar::add-page, QScrollBar::sub-page { background: transparent; }
 /* ---- splitters and status bar ---- */
 QSplitter::handle { background: $window; }
 QSplitter::handle:hover { background: $hairline; }
-QStatusBar { background: $window; color: $text_dim; }
+QStatusBar { background: $window; color: $text_dim; border-top: 1px solid $hairline; }
 QStatusBar::item { border: 0; }
 
 QProgressBar {
