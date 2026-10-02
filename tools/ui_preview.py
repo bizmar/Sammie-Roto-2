@@ -19,6 +19,8 @@ import types
 from pathlib import Path
 from unittest import mock
 
+from PySide6.QtCore import QCoreApplication, QEvent
+
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 REPO = Path(__file__).resolve().parent.parent
@@ -96,6 +98,8 @@ def _grab(widget, app, path, size=None):
         widget.resize(*size)
     widget.show()
     app.processEvents()
+    # Widgets removed with deleteLater() are only destroyed on request here
+    QCoreApplication.sendPostedEvents(None, QEvent.DeferredDelete)
     app.processEvents()
     if not widget.grab().save(str(path)):
         raise RuntimeError(f"could not write {path}")

@@ -182,7 +182,7 @@ class ClickableLabel(QLabel):
     
     def __init__(self, text=""):
         super().__init__(text)
-        self.setStyleSheet("QLabel:hover { color: #0078d4; }")  # Visual feedback on hover
+        self.setStyleSheet("QLabel:hover { color: palette(link); }")  # Visual feedback on hover
     
     def mouseDoubleClickEvent(self, event):
         """Handle double-click events"""
@@ -292,7 +292,7 @@ class PointTable(QTableWidget):
         # Add name label if there's a name
         if object_name:
             name_label = QLabel(f"({object_name})")
-            name_label.setStyleSheet("color: gray; font-style: italic;")
+            name_label.setStyleSheet("color: palette(placeholder-text); font-style: italic;")
             layout.addWidget(name_label)
         
         layout.addStretch()  # Push everything to the left
@@ -1133,8 +1133,8 @@ class FrameSlider(QSlider):
             QStyle.CC_Slider, opt, QStyle.SC_SliderGroove, self
         )
         
-        # Use solid black for both markers
-        pen_color = QColor(0, 0, 0)
+        # Draw both markers in the text colour so they read on light and dark themes
+        pen_color = self.palette().color(QPalette.WindowText)
         painter.setPen(QPen(pen_color, 2))  # 2px line thickness
         
         # Bracket centered vertically on the groove

@@ -30,6 +30,7 @@ from sammie.resources import resources
 from sammie import core
 from sammie import matting
 from sammie import removal
+from sammie import theme
 from sammie.export_image_dialog import ImageExportDialog
 from sammie.export_dialog import ExportDialog
 from sammie.settings_dialog import SettingsDialog
@@ -3282,6 +3283,7 @@ Examples:
 
     app = QApplication(sys.argv)
     app.setWindowIcon(QIcon(":/icon.ico"))
+    theme.apply_theme(app)
 
     window = MainWindow(initial_file=file_to_load)
     #window.show() is now called inside __init__

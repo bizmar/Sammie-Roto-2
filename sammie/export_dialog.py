@@ -188,7 +188,7 @@ class ExportDialog(QDialog):
         
         # Preview
         self.filename_preview_label = QLabel()
-        self.filename_preview_label.setStyleSheet("color: gray; font-style: italic;")
+        self.filename_preview_label.setStyleSheet("color: palette(placeholder-text); font-style: italic;")
         self.filename_preview_label.setWordWrap(True)
         output_layout.addRow("Preview:", self.filename_preview_label)
         

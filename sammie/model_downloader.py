@@ -283,7 +283,8 @@ class ModelDownloadDialog(QDialog):
         # Error label (hidden until needed)
         self._error_label = QLabel()
         self._error_label.setWordWrap(True)
-        self._error_label.setStyleSheet("color: red;")
+        # Readable on both the dark app theme and the unthemed standalone run
+        self._error_label.setStyleSheet("color: #e5484d;")
         self._error_label.hide()
         layout.addWidget(self._error_label)
 
