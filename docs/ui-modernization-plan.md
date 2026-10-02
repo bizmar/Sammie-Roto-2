@@ -134,7 +134,7 @@ Each phase is independently shippable and leaves the app working. Phases 1-2 are
 | 5 | Matching panel titles, per-platform console font, status bar divider, dialogs checked. |
 | 6 | Contrast measured and fixed, keyboard focus rings, 150% and 200% scaling checked, Reset Interface and layout persistence tested. |
 
-`tools/ui_checks.py` runs 74 checks without a display or the models: collapsible sections, slider rows (read-outs, saving, reset, gamma's decimal display, loading from settings), timeline geometry, click and drag, the per-view options, keyboard focus, the view selector and toolbar buttons, layout persistence and Reset Interface.
+`tools/ui_checks.py` runs 82 checks without a display or the models: collapsible sections, slider rows (read-outs, saving, reset, gamma's decimal display, loading from settings), timeline geometry, click and drag, the per-view options, keyboard focus, the view selector and toolbar buttons, layout persistence and Reset Interface.
 
 ### Where it differs from the plan
 

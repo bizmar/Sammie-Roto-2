@@ -106,6 +106,12 @@ def _populate(window, app):
     app.processEvents()
 
 
+def _settings_on_tab(window, dialog_class, index):
+    dialog = dialog_class(window.settings_mgr, window)
+    dialog.tab_widget.setCurrentIndex(index)
+    return dialog
+
+
 def _grab(widget, app, path, size=None):
     if size:
         widget.resize(*size)
@@ -168,6 +174,7 @@ def main():
 
         dialogs = {
             "settings": lambda: SettingsDialog(window.settings_mgr, window),
+            "settings-defaults": lambda: _settings_on_tab(window, SettingsDialog, 1),
             "export": lambda: ExportDialog(window),
             "export-image": lambda: ImageExportDialog(window, 40),
             "hotkeys": lambda: gui_widgets.HotkeysHelpDialog(window._shortcuts_list, window),

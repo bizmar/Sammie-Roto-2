@@ -311,6 +311,23 @@ def check_point_delete_buttons(app):
     window.close()
 
 
+def check_settings_dialog_fits(app, mgr):
+    from sammie.settings_dialog import SettingsDialog
+
+    dialog = SettingsDialog(mgr)
+    dialog.show()
+    app.processEvents()
+    available = dialog.screen().availableGeometry().height()
+    check(dialog.height() <= available * 0.9 + 1, f"settings: the dialog is capped to 90% of the screen height ({dialog.height()} of {available})")
+    for index in range(dialog.tab_widget.count()):
+        dialog.tab_widget.setCurrentIndex(index)
+        app.processEvents()
+        scroll = dialog.tab_widget.currentWidget()
+        name = dialog.tab_widget.tabText(index)
+        check(scroll.verticalScrollBar().maximum() == 0, f"settings: the {name} tab shows in full without scrolling")
+    dialog.close()
+
+
 def check_dark_whatever_the_system_says(app):
     from PySide6.QtCore import Qt
     from PySide6.QtWidgets import QPushButton
@@ -402,6 +419,7 @@ def main():
     check_view_selector_and_toolbar_buttons(app)
     check_point_delete_buttons(app)
     check_keyboard_focus(app)
+    check_settings_dialog_fits(app, mgr)
     check_dark_whatever_the_system_says(app)
     check_entry_points_apply_theme()
 

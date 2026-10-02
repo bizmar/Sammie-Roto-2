@@ -8,7 +8,7 @@ For anyone working on this fork in another thread. This is the short version; `d
 
 ## What the user sees
 
-- Dark neutral theme, same on every platform (Fusion style plus one generated stylesheet).
+- Dark neutral theme, same on every platform and **always dark, whatever the Windows or macOS light/dark setting** (Fusion style, a fixed palette and one generated stylesheet).
 - New top bar over the viewer: **Load Video** | segmented view selector | per-view options | **Export Video** (pinned to the far right).
 - View selector: *stage* (Segmentation / Matting / Removal) then *mode* (Edit / Matte / BG Color). Removal has one view, so the mode control hides.
 - Sidebar sections are collapsible (state remembered, Reset Interface reopens them). Sliders have an accent fill and a value field.
@@ -28,7 +28,7 @@ For anyone working on this fork in another thread. This is the short version; `d
 | `sammie_main.py` | Tabs use the new widgets. `_create_viewer_toolbar`, `_create_frame_controls`, `_create_playback_controls` were rebuilt. |
 | `sammie/settings_manager.py` | One new app setting, `collapsed_sections` (list of titles). Older settings files load fine. |
 | `tools/ui_preview.py` | Renders the main window and four dialogs to PNGs, no display needed. |
-| `tools/ui_checks.py` | 74 behaviour checks, no display or models needed. |
+| `tools/ui_checks.py` | 82 behaviour checks, no display or models needed. |
 
 ## Rules for new UI code
 
@@ -53,6 +53,8 @@ On a bare Linux box Qt also needs `libegl1 libgl1 libxkbcommon0 libfontconfig1`.
 
 ## Gotchas found along the way
 
+- **The app is started by `launcher.py`, not `sammie_main.main()`.** `run_sammie.bat` and `run_sammie.sh` run the launcher, which makes its own `QApplication`. The theme was first only applied in `main()`, so in normal use it never applied and Windows' light/dark setting showed through. Any file that creates a `QApplication` must call `theme.apply_theme(app)`; `tools/ui_checks.py` checks this. The screenshot tools call `apply_theme` themselves, so they cannot reveal a missing call.
+
 - `MainWindow` redirects `sys.stdout` into its console widget. Anything a script prints after the window exists vanishes; the tools write to `sys.__stdout__`.
 - `QIcon.Active` is applied for keyboard focus, not hover. Hover colour changes need an enter/leave swap (`HoverIconButton`).
 - Stylesheet images can't use `currentColor`, which is why `indicator-check.svg` is a separate fixed-colour file.
@@ -67,6 +69,8 @@ On a bare Linux box Qt also needs `libegl1 libgl1 libxkbcommon0 libfontconfig1`.
 
 ## Open items
 
-- Check on Windows: fonts, the dark native title bar (`setColorScheme`), narrow-window behaviour of the top bar.
+- Check on Windows with the system set to **light** as well as dark: the whole app should look the same, including the title bar (`setColorScheme`, which the offscreen test platform cannot report). If the title bar stays light, set the Windows dark title-bar attribute per window as a fallback.
+- Check the narrow-window behaviour of the top bar.
 - Run a real clip end to end (load, track, matte, remove, export) with the new interface.
+- Settings dialog now sizes itself to its tallest tab (capped to 90% of the screen) so nothing scrolls at normal sizes.
 - Possible follow-ups: editable or draggable number fields, a light theme (the colours are all in `TOKENS`), a fixed slot for the mode control if the top bar should never reflow.

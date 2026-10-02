@@ -27,7 +27,28 @@ class SettingsDialog(QDialog):
         
         self._init_ui()
         self._load_current_values()
-        
+        self._fitted = False
+
+    def showEvent(self, event):
+        # Qt has laid the dialog out by now, but it is not on screen yet
+        if not self._fitted:
+            self._fitted = True
+            self._fit_to_content()
+        super().showEvent(event)
+
+    def _fit_to_content(self):
+        """
+        Open tall enough for the longest tab to show without scrolling. The
+        height comes from the content, so it follows the font and scaling, and
+        is capped to the screen so the dialog never opens taller than it.
+        """
+        scrolls = [self.tab_widget.widget(i) for i in range(self.tab_widget.count())]
+        chrome = self.height() - self.tab_widget.currentWidget().viewport().height()
+        wanted = max(s.widget().sizeHint().height() for s in scrolls) + chrome
+        available = self.screen().availableGeometry().height() if self.screen() else wanted
+        self.resize(self.width(), max(self.height(), min(wanted, int(available * 0.9))))
+        self.adjustPosition(self.parentWidget())  # it was centred at the old height
+
     def _backup_app_settings(self):
         """Create a backup of current application settings"""
         from sammie.settings_manager import ApplicationSettings
