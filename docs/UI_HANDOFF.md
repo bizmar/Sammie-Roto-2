@@ -41,6 +41,7 @@ For anyone working on this fork in another thread. This is the short version; `d
 6. **Styling by name:** use `setObjectName` or dynamic properties and put the rule in `theme.py` (`hint`, `panelTitle`, `iconButton`, `caption`, `frameReadout`, `timeline`, `sliderValue`). Avoid new inline `setStyleSheet` calls.
 7. **Keep body text at 12px or more**, and check any new text colour against the contrast table in the plan. White text needs the `selection` blue, not `accent`.
 8. **Button text with `&`:** write `&&`. A lone `&` is a mnemonic; the styled title drew `"Format & Settings"` with a stray underscore.
+9. **Progress and "Please Wait" windows:** show them with `show_painted(window)` from `sammie.gui_widgets`, not `show()` (or `show()` plus one `processEvents()`). They are followed by blocking work, and on Windows a window that has not been exposed and painted yet shows blank white - a white flash on the dark theme for as long as the work runs. Measured: 1.5 s on image sequence load before the fix.
 
 ## Running the tools
 
