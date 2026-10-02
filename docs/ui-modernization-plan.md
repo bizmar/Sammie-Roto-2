@@ -2,7 +2,7 @@
 
 Goal: make Sammie-Roto look like a modern pro video tool, taking **DaVinci Resolve Studio** and **Final Cut Pro** as references, without changing any processing behavior.
 
-Status: plan only. Nothing here has been implemented, and I have not run the app. Findings below come from reading the code at `main` (`2be7283`).
+Status: **all phases implemented** on branch `claude/bold-brown-no64ko`, built on `exr-ingest`. The "Where the UI is today" section below describes the code as it was before this work. See "What was built" for the result and "Not verified" for what still needs a real machine.
 
 ## 1. What to borrow
 
@@ -33,21 +33,24 @@ Status: plan only. Nothing here has been implemented, and I have not run the app
 - **Everything lives in two big files:** `sammie_main.py` (3270 lines, all tabs and `MainWindow`) and `sammie/gui_widgets.py`.
 - **There are no tests.** Verification has to be visual.
 
-## 3. Design tokens (starting values, tune on screen)
+## 3. Design tokens (final values, from `sammie/theme.py`)
 
 | Token | Value | Use |
 |---|---|---|
 | `canvas` | `#141414` | Viewer background |
 | `window` | `#1c1c1e` | Window, menu bar |
 | `panel` | `#232325` | Sidebar, bottom panels |
-| `control` | `#2f2f32` | Inputs, buttons |
-| `control-hover` | `#3a3a3e` | Hover |
+| `field` | `#19191b` | Inset inputs and tables |
+| `control` | `#2f2f32` | Buttons |
+| `control-hover` / `control-pressed` | `#3a3a3e` / `#26262a` | Hover / pressed |
 | `hairline` | `#3a3a3c` | 1px dividers |
-| `text` / `text-dim` / `text-off` | `#e8e8ea` / `#9a9aa0` / `#5c5c61` | Dim text must stay at least 4.5:1 on `panel` |
-| `accent` | `#0a84ff` | Focus, selection, playhead, in/out range |
+| `text` / `text-dim` / `text-off` | `#e8e8ea` / `#9a9aa0` / `#6a6a70` | Text, secondary text (5.6:1 on `panel`), disabled text |
+| `accent` | `#0a84ff` | Graphics: slider fill, focus rings, check boxes, links |
+| `selection` | `#0a70e0` | Surfaces that carry white text (4.8:1): menu highlight, selected rows, checked buttons |
+| `danger` / `positive` | `#ff6b6b` / `#30d158` | Negative and positive point markers, errors |
 | Radius | 6px controls, 8px panels | |
 | Spacing | 4 / 8 / 12 / 16px | |
-| Type | System UI font, 12px body | Monospace with tabular numerals for frame readout and console |
+| Type | System UI font at the platform default size; usage notes are 12px | Per-platform monospace for the frame readout and console |
 
 Neutral grays only. No tint.
 
@@ -111,10 +114,41 @@ Each phase is independently shippable and leaves the app working. Phases 1-2 are
 - **No automated tests.** A silent break (a slider no longer saving) would not be caught. Keep widget attribute names and signals identical and check them by hand in Phase 3.
 - **QSS is easy to over-engineer.** Prefer palette plus a small stylesheet over per-widget rules.
 
-## 6. Decisions needed from you
+## 6. Decisions (answered)
 
-1. **Base branch.** The README says the real work is on `exr-ingest`, which exists on GitHub but is not in this checkout (this session started from `main`). Should the UI work go on top of `exr-ingest`?
-2. **Scope.** Restyle only (Phases 0-2), or the full layout changes (Phases 3-5) too? I recommend doing 0-2 first and looking at the result before deciding.
-3. **Light theme.** Dark only, or keep the tokens structured so a light variant can be added later? Dark only is much less work.
-4. **Icon set.** Lucide (line icons, closest to Resolve and FCP) or Phosphor (more weights)? I would pick Lucide.
-5. **Fonts.** I recommend system fonts and no bundled font. Say if you want a bundled font for identical looks on both platforms.
+1. **Base branch:** `exr-ingest`.
+2. **Scope:** the full plan, as a separate branch from the README change.
+3. **Light theme:** dark only. The colours live in one `TOKENS` table in `sammie/theme.py`, so a light variant is possible later.
+4. **Icons:** drawn in-house as SVGs (see below).
+5. **Fonts:** system fonts. The monospace readouts use a per-platform fallback list.
+
+## 7. What was built
+
+| Phase | Result |
+|---|---|
+| 0 | `tools/ui_preview.py` renders the main window (each tab, two view modes) and four dialogs to PNGs with no display, GPU or models. |
+| 1 | `sammie/theme.py`: Fusion style, a dark palette and one stylesheet generated from a token table, applied in `main()`. Hard-coded colours that broke on dark (black in/out markers, fixed gray/red/blue labels) now use palette roles. |
+| 2 | 14 SVG icons (plus one stylesheet-only checkmark) in `sammie/resources/icons/`, rendered and tinted by `sammie/icons.py` (normal, checked, disabled and selected states). Sharp at 200% scaling. |
+| 3 | `CollapsibleGroup` replaces all 16 `QGroupBox` frames. `add_slider_row` replaces the ten hand-built slider rows. Tabs fit without scroll arrows. |
+| 4 | View selector and options moved to a bar above the viewer, dark canvas, transport row with a monospace frame readout, restyled timeline with a white playhead and tinted in/out range, click-to-jump scrubbing. |
+| 5 | Matching panel titles, per-platform console font, status bar divider, dialogs checked. |
+| 6 | Contrast measured and fixed, keyboard focus rings, 150% and 200% scaling checked, Reset Interface and layout persistence tested. |
+
+`tools/ui_checks.py` runs 56 checks without a display or the models: collapsible sections, slider rows (read-outs, saving, reset, gamma's decimal display, loading from settings), timeline geometry, click and drag, the per-view options, keyboard focus, layout persistence and Reset Interface.
+
+### Where it differs from the plan
+
+- **No hot-reload shortcut for the stylesheet.** The screenshot tool made it unnecessary.
+- **Icons are drawn here, not taken from Lucide or Phosphor.** The icon CDN was not reachable from the build environment, and a hand-drawn set in one consistent style avoids a third-party licence. The old Fugue PNGs are no longer used by the code but are still embedded in `sammie/resources/resources.py` (the source `.qrc` is not in the repo), so the README credit stays.
+- **`add_slider_row` helper instead of a `SliderRow` widget.** Some rows share a grid with combo boxes whose columns must line up, and other code reads each slider and read-out by name. The helper keeps both.
+- **Number fields are read-outs, not editable or draggable.** Double-click on the label still resets.
+- **The view selector is still a combo box**, moved and restyled. A segmented control would need changes in several handlers.
+- **A second blue.** White text on the accent blue measured 3.6:1, so surfaces that carry text (menu highlight, selected rows, checked buttons) use a deeper `selection` blue at 4.8:1. Graphics keep the brighter accent.
+- **Keyboard focus rings use an event filter** that flags widgets focused by Tab, Shift+Tab or a shortcut, so mouse clicks don't leave rings behind.
+- **Sections that share a title open and close together**, so Instructions in the Matting and Removal tabs stay in step.
+- **Found on the way:** the Export dialog title `"Format & Settings"` had a lone ampersand, which Qt reads as a keyboard mnemonic. The styled title drew it as a stray underscore, so it is now `&&`.
+
+### Not verified
+
+- **Windows and macOS.** Everything was rendered and tested on Linux with Qt's offscreen platform and Fusion style. Fonts, the dark native title bar (`setColorScheme`) and macOS's native menu bar have not been seen on a real Windows or macOS machine.
+- **The real workflow.** Torch and SAM2 are stubbed, so loading a clip, tracking, matting, removal and export were not run. The checks cover the widgets that were rebuilt, not the processing behind them.

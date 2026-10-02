@@ -19,6 +19,7 @@ import shutil
 import threading
 import requests
 from packaging import version
+import weakref
 from datetime import datetime
 from PySide6.QtWidgets import (
     QLabel, QTableWidget, QTableWidgetItem, QAbstractItemView, 
@@ -207,14 +208,19 @@ class CollapsibleGroup(QFrame):
     Hiding the body leaves each child's own visibility alone, so widgets the
     app shows and hides itself keep working while a section is closed. Open or
     closed is remembered between runs.
+
+    State is kept by title: sections that share a title (such as the
+    Instructions in the Matting and Object Removal tabs) open and close together.
     """
     toggled = Signal(bool)  # True when expanded
+    _instances = weakref.WeakSet()
 
     def __init__(self, title, parent=None):
         super().__init__(parent)
         self.setObjectName("collapsibleGroup")
         self._title = title
         self._margins_applied = False
+        CollapsibleGroup._instances.add(self)
 
         outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
@@ -252,6 +258,9 @@ class CollapsibleGroup(QFrame):
                 collapsed.append(self._title)
             mgr.app_settings.collapsed_sections = collapsed
             mgr.save_app_settings()
+            for other in list(CollapsibleGroup._instances):
+                if other is not self and other._title == self._title:
+                    other.set_expanded(expanded, remember=False)
         self.toggled.emit(expanded)
 
     def showEvent(self, event):

@@ -13,8 +13,9 @@ hard-coding one.
 from pathlib import Path
 from string import Template
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QEvent, QObject, Qt
 from PySide6.QtGui import QColor, QFont, QPalette
+from PySide6.QtWidgets import QWidget
 
 ICON_DIR = Path(__file__).resolve().parent / "resources" / "icons"
 
@@ -30,7 +31,8 @@ TOKENS = {
     "text": "#e8e8ea",
     "text_dim": "#9a9aa0",       # at least 4.5:1 on panel
     "text_off": "#6a6a70",
-    "accent": "#0a84ff",         # focus, selection, playhead, in/out range
+    "accent": "#0a84ff",         # graphics: slider fill, focus, check boxes, links
+    "selection": "#0a70e0",      # surfaces that carry white text (4.5:1): menus, rows, checked buttons
     "accent_hover": "#3a9bff",
     "on_accent": "#ffffff",
     "danger": "#ff6b6b",
@@ -69,7 +71,7 @@ def build_palette():
         QPalette.Button: "control",
         QPalette.ButtonText: "text",
         QPalette.BrightText: "on_accent",
-        QPalette.Highlight: "accent",
+        QPalette.Highlight: "selection",
         QPalette.HighlightedText: "on_accent",
         QPalette.Link: "accent_hover",
         QPalette.PlaceholderText: "text_dim",
@@ -105,7 +107,7 @@ QMenu {
     border: 1px solid $hairline; border-radius: $radius; padding: 4px;
 }
 QMenu::item { padding: 5px 24px 5px 12px; border-radius: 4px; }
-QMenu::item:selected { background: $accent; color: $on_accent; }
+QMenu::item:selected { background: $selection; color: $on_accent; }
 QMenu::item:disabled { color: $text_off; }
 QMenu::separator { height: 1px; background: $hairline; margin: 4px 8px; }
 
@@ -118,16 +120,21 @@ QPushButton {
 }
 QPushButton:hover { background: $control_hover; }
 QPushButton:pressed { background: $control_pressed; }
-QPushButton:checked { background: $accent; border-color: $accent; color: $on_accent; }
+QPushButton:checked { background: $selection; border-color: $selection; color: $on_accent; }
 QPushButton:default { border-color: $accent; }
 QPushButton:disabled { background: $panel; color: $text_off; border-color: $control; }
+
+/* keyboard focus rings (see _KeyboardFocus) */
+QPushButton[keyboardFocus="true"] { border-color: $accent_hover; }
+QPushButton#sectionHeader[keyboardFocus="true"] { background: $control_pressed; color: $accent_hover; }
+QCheckBox[keyboardFocus="true"]::indicator { border-color: $accent_hover; }
 
 /* ---- text inputs ---- */
 QLineEdit, QTextEdit, QPlainTextEdit {
     background: $field; color: $text;
     border: 1px solid $hairline; border-radius: $radius;
     padding: 3px 6px;
-    selection-background-color: $accent; selection-color: $on_accent;
+    selection-background-color: $selection; selection-color: $on_accent;
 }
 QLineEdit:focus, QTextEdit:focus, QPlainTextEdit:focus { border-color: $accent; }
 QLineEdit:disabled { color: $text_off; background: $panel; }
@@ -178,7 +185,7 @@ QLabel#panelTitle { color: $text; font-weight: 600; padding: 4px 2px; }
 /* ---- hint blocks (usage notes in the sidebar) ---- */
 QLabel#hint {
     background: $panel; padding: 10px;
-    border: 0; border-radius: $radius_panel; font-size: 11px;
+    border: 0; border-radius: $radius_panel; font-size: 12px;
 }
 
 /* ---- sidebar sections ---- */
@@ -222,7 +229,7 @@ QTableView, QTableWidget {
     background: $field; alternate-background-color: $panel;
     border: 1px solid $hairline; border-radius: $radius;
     gridline-color: $hairline;
-    selection-background-color: $accent; selection-color: $on_accent;
+    selection-background-color: $selection; selection-color: $on_accent;
 }
 QHeaderView::section {
     background: $panel; color: $text_dim;
@@ -253,6 +260,33 @@ QProgressBar::chunk { background: $accent; border-radius: 5px; }
 """)
 
 
+class _KeyboardFocus(QObject):
+    """
+    Sets the dynamic property `keyboardFocus` on widgets that received focus
+    from the keyboard (Tab, Shift+Tab or a shortcut).
+
+    A plain :focus rule can't tell keyboard from mouse, so every button would
+    keep a focus ring after being clicked. Styling the property instead rings
+    only what keyboard users navigate to.
+    """
+    KEYBOARD_REASONS = (Qt.TabFocusReason, Qt.BacktabFocusReason, Qt.ShortcutFocusReason)
+
+    def eventFilter(self, obj, event):
+        if isinstance(obj, QWidget):
+            if event.type() == QEvent.FocusIn:
+                self._mark(obj, event.reason() in self.KEYBOARD_REASONS)
+            elif event.type() == QEvent.FocusOut:
+                self._mark(obj, False)
+        return False
+
+    @staticmethod
+    def _mark(widget, on):
+        if bool(widget.property("keyboardFocus")) != on:
+            widget.setProperty("keyboardFocus", on)
+            widget.style().unpolish(widget)
+            widget.style().polish(widget)
+
+
 def build_stylesheet():
     return STYLESHEET.substitute(TOKENS, icon_dir=ICON_DIR.as_posix())
 
@@ -267,3 +301,5 @@ def apply_theme(app):
         pass
     app.setPalette(build_palette())
     app.setStyleSheet(build_stylesheet())
+    # Parented to the app so it lives as long as it does
+    app.installEventFilter(_KeyboardFocus(app))

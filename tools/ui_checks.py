@@ -65,21 +65,56 @@ def check_collapsible_group(app, mgr):
     group.header.click()  # tidy up
 
 
-def check_reset_interface(app, mgr):
-    import sammie_main
+def check_reset_interface_and_layout_persistence(app):
     from sammie.gui_widgets import CollapsibleGroup
+    from sammie.settings_manager import ApplicationSettings
 
-    sidebar = sammie_main.Sidebar()
-    sidebar.show()
-    groups = sidebar.findChildren(CollapsibleGroup)
+    window = ui_preview.create_main_window()
+    window.resize(1400, 900)
+    window.show()
+    app.processEvents()
+
+    groups = window.sidebar.findChildren(CollapsibleGroup)
     check(len(groups) == 16, f"the sidebar has 16 sections ({len(groups)})")
-    for group in groups[:3]:
+
+    # Sections that share a title (Instructions, Parameters, Postprocessing) move together
+    instructions = [g for g in groups if g._title == "Instructions"]
+    check(len(instructions) == 2, "the Matting and Object Removal tabs each have an Instructions section")
+    instructions[0].set_expanded(False)
+    check(not instructions[1].is_expanded(), "closing one Instructions section closes the other")
+    instructions[1].set_expanded(True)
+    check(instructions[0].is_expanded(), "reopening one reopens the other")
+
+    unique = [g for g in groups if sum(o._title == g._title for o in groups) == 1][:3]
+    for group in unique:
         group.set_expanded(False)
-    check(sum(not g.is_expanded() for g in groups) >= 3, "several sections can be closed")
-    # MainWindow.reset_interface reopens every section in the sidebar
-    for group in sidebar.findChildren(CollapsibleGroup):
-        group.set_expanded(True)
-    check(all(g.is_expanded() for g in groups) and not mgr.app_settings.collapsed_sections, "reopening them all clears the remembered state")
+    window.main_splitter.setSizes([700, 700])
+    app.processEvents()
+    check(sum(not g.is_expanded() for g in groups) == 3, "three sections can be closed")
+
+    # Layout survives a restart: save, then build a new window from the settings file
+    window.main_splitter.setSizes([900, 400])
+    app.processEvents()
+    saved = window.main_splitter.sizes()
+    window._save_window_and_splitter_settings()
+    window.close()
+
+    window = ui_preview.create_main_window()
+    window.resize(1400, 900)
+    window.show()
+    app.processEvents()
+    groups = window.sidebar.findChildren(CollapsibleGroup)
+    sizes = window.main_splitter.sizes()
+    check(abs(sizes[0] / sum(sizes) - saved[0] / sum(saved)) < 0.03, f"splitter sizes are restored on the next start ({saved} -> {sizes})")
+    check(sum(not g.is_expanded() for g in groups) == 3, "closed sections are restored on the next start")
+
+    window.reset_interface()
+    app.processEvents()
+    default = ApplicationSettings().main_splitter_sizes
+    sizes = window.main_splitter.sizes()
+    check(abs(sizes[0] / sum(sizes) - default[0] / sum(default)) < 0.03, f"Reset Interface restores the default splitter sizes ({sizes})")
+    check(all(g.is_expanded() for g in groups), "Reset Interface reopens every section")
+    window.close()
 
 
 def check_sliders(app, mgr):
@@ -192,6 +227,37 @@ def check_timeline_and_view_bar(app):
     window.close()
 
 
+def check_keyboard_focus(app):
+    from PySide6.QtCore import Qt
+    from PySide6.QtTest import QTest
+    from PySide6.QtWidgets import QPushButton, QVBoxLayout, QWidget
+
+    host = QWidget()
+    layout = QVBoxLayout(host)
+    first, second = QPushButton("first"), QPushButton("second")
+    layout.addWidget(first)
+    layout.addWidget(second)
+    host.show()
+    host.activateWindow()
+    QTest.qWaitForWindowActive(host)
+
+    # A window gives its first widget focus when it activates, so start elsewhere
+    second.setFocus(Qt.MouseFocusReason)
+    app.processEvents()
+    first.setFocus(Qt.TabFocusReason)
+    app.processEvents()
+    check(first.property("keyboardFocus") is True, "keyboard focus: Tab onto a button marks it for the focus ring")
+    second.setFocus(Qt.MouseFocusReason)
+    app.processEvents()
+    check(not first.property("keyboardFocus"), "keyboard focus: the ring leaves a button when focus moves away")
+    check(not second.property("keyboardFocus"), "keyboard focus: clicking a button (mouse focus) does not ring it")
+    first.setFocus(Qt.BacktabFocusReason)
+    app.processEvents()
+    check(first.property("keyboardFocus") is True, "keyboard focus: Shift+Tab onto a button marks it too")
+    check(first.hasFocus(), "keyboard focus: the button really has focus (the check ran on a live window)")
+    host.close()
+
+
 def main():
     os.chdir(tempfile.mkdtemp(prefix="sammie-ui-checks-"))  # settings are written relative to the cwd
     ui_preview.install_stubs()
@@ -205,8 +271,9 @@ def main():
 
     check_collapsible_group(app, mgr)
     check_sliders(app, mgr)
-    check_reset_interface(app, mgr)
+    check_reset_interface_and_layout_persistence(app)
     check_timeline_and_view_bar(app)
+    check_keyboard_focus(app)
 
     sys.__stdout__.write(f"\n{len(failures)} failure(s)\n")
     return 1 if failures else 0
