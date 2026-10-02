@@ -311,6 +311,38 @@ def check_point_delete_buttons(app):
     window.close()
 
 
+def check_launch_is_quiet():
+    import subprocess
+
+    result = subprocess.run([sys.executable, str(Path(__file__).with_name("launch_probe.py"))],
+                            capture_output=True, text=True, timeout=120)
+    order = [line for line in result.stdout.splitlines() if line.strip()]
+    check(bool(order), f"launch: the launcher ran and showed windows ({order or result.stderr[-200:]})")
+    check(order[:1] == ["QSplashScreen"], f"launch: the splash screen is the first window shown (order: {order})")
+    check(order.index("MainWindow") > order.index("QSplashScreen") if {"MainWindow", "QSplashScreen"} <= set(order) else False,
+          "launch: the main window appears only after the splash")
+
+
+def check_windows_shortcut_does_not_open_a_console():
+    import importlib.util
+    import tempfile
+
+    spec = importlib.util.spec_from_file_location("sammie_manage", ui_preview.REPO / "manage.py")
+    manage = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(manage)
+
+    with tempfile.TemporaryDirectory() as app_dir:
+        script = manage.windows_shortcut_script(app_dir, "C:/Desktop/Sammie-Roto-2.lnk")
+        check("run_sammie.bat" in script and "WindowStyle = 7" in script, "shortcut: without uvw.exe it falls back to the .bat, started minimised")
+
+        os.makedirs(os.path.join(app_dir, ".uv"))
+        Path(app_dir, ".uv", "uvw.exe").write_bytes(b"")
+        script = manage.windows_shortcut_script(app_dir, "C:/Desktop/Sammie-Roto-2.lnk")
+        check("uvw.exe" in script and "run_sammie.bat" not in script, "shortcut: with uvw.exe it runs it directly, so no console window is created")
+        check('Arguments = "run --no-sync launcher.py"' in script, "shortcut: it passes the same arguments the .bat does")
+        check("WorkingDirectory" in script and app_dir in script, "shortcut: it starts in the app folder")
+
+
 def check_settings_dialog_fits(app, mgr):
     from sammie.settings_dialog import SettingsDialog
 
@@ -420,6 +452,8 @@ def main():
     check_point_delete_buttons(app)
     check_keyboard_focus(app)
     check_settings_dialog_fits(app, mgr)
+    check_launch_is_quiet()
+    check_windows_shortcut_does_not_open_a_console()
     check_dark_whatever_the_system_says(app)
     check_entry_points_apply_theme()
 

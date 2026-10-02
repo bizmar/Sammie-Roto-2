@@ -136,13 +136,12 @@ if __name__ == "__main__":
 
     app = QApplication(sys.argv)
     app.setWindowIcon(QIcon(":/icon.ico"))
-    # The app is always dark, whatever the operating system's light/dark setting.
-    # Applied before anything is shown, so the splash and message boxes match.
-    theme.apply_theme(app)
     
     # Check for single instance
     lock_file, is_first = check_single_instance()
     if not is_first:
+        # Nothing else has been shown, so this is the only window the user sees
+        theme.apply_theme(app)
         msg_box = QMessageBox()
         msg_box.setIcon(QMessageBox.Warning)
         msg_box.setWindowTitle("Already Running")
@@ -153,7 +152,11 @@ if __name__ == "__main__":
     # Keep lock_file alive so it isn't garbage collected
     app.lock_file = lock_file
     app.aboutToQuit.connect(lambda: lock_file.unlock())
+    # The splash is the first thing on screen, so it goes up before any other setup
     splash = show_splash(app)
+    # The app is always dark, whatever the operating system's light/dark setting.
+    # Everything shown after the splash, including error boxes, uses it.
+    theme.apply_theme(app)
 
     def load():
         try:

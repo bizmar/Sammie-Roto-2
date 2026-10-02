@@ -27,8 +27,9 @@ For anyone working on this fork in another thread. This is the short version; `d
 | `sammie/gui_widgets.py` | New: `CollapsibleGroup`, `add_slider_row`, `SegmentedControl`, `ViewSelector`, `HoverIconButton`. Changed: `FrameSlider` (own track, click-to-jump). |
 | `sammie_main.py` | Tabs use the new widgets. `_create_viewer_toolbar`, `_create_frame_controls`, `_create_playback_controls` were rebuilt. |
 | `sammie/settings_manager.py` | One new app setting, `collapsed_sections` (list of titles). Older settings files load fine. |
+| `tools/launch_probe.py` | Runs the real `launcher.py` headlessly and prints the order windows are first shown; `ui_checks.py` uses it to confirm the splash is first. |
 | `tools/ui_preview.py` | Renders the main window and four dialogs to PNGs, no display needed. |
-| `tools/ui_checks.py` | 82 behaviour checks, no display or models needed. |
+| `tools/ui_checks.py` | 89 behaviour checks, no display or models needed. |
 
 ## Rules for new UI code
 
@@ -52,6 +53,8 @@ python tools/ui_checks.py                       # exits non-zero on any failure
 On a bare Linux box Qt also needs `libegl1 libgl1 libxkbcommon0 libfontconfig1`. Run from anywhere: both tools work in a temporary directory, because the app reads and writes its settings relative to the current directory.
 
 ## Gotchas found along the way
+
+- **A blank window before the splash was the console from `run_sammie.bat`.** A shortcut to a `.bat` always opens a console, which sits empty until the script exits. The desktop shortcut made by `manage.py` now runs `.uv\uvw.exe run --no-sync launcher.py` directly (no console), or falls back to the `.bat` started minimised. Existing shortcuts are only rewritten when `manage.py` next creates them (install or update); to fix one by hand, set its Target to `<app folder>\.uv\uvw.exe run --no-sync launcher.py` and Start in to the app folder, or just set Run to Minimized. Double-clicking `run_sammie.bat` itself still opens a console. The launcher also shows the splash before doing any other setup, including the theme.
 
 - **The app is started by `launcher.py`, not `sammie_main.main()`.** `run_sammie.bat` and `run_sammie.sh` run the launcher, which makes its own `QApplication`. The theme was first only applied in `main()`, so in normal use it never applied and Windows' light/dark setting showed through. Any file that creates a `QApplication` must call `theme.apply_theme(app)`; `tools/ui_checks.py` checks this. The screenshot tools call `apply_theme` themselves, so they cannot reveal a missing call.
 

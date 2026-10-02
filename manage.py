@@ -436,22 +436,39 @@ def create_linux_desktop_entry():
     os.chmod(desktop_path, 0o755)
     print(f"Created Linux desktop shortcut at: {desktop_path}")
 
+def windows_shortcut_script(app_dir, shortcut_path):
+    """
+    PowerShell that creates the desktop shortcut.
+
+    A shortcut to a .bat file always opens a console window, which flashes up
+    empty before the splash screen appears. When the windowless uv (uvw.exe)
+    is there, the shortcut runs it directly, which is what run_sammie.bat does,
+    so no console is created. Otherwise it falls back to the .bat, started
+    minimised so the console stays out of sight.
+    """
+    icon = os.path.join(app_dir, "sammie", "resources", "icon.ico")
+    uvw = os.path.join(app_dir, ".uv", "uvw.exe")
+    if os.path.exists(uvw):
+        target, arguments, window_style = uvw, "run --no-sync launcher.py", 1
+    else:
+        target, arguments, window_style = os.path.join(app_dir, "run_sammie.bat"), "", 7
+    return (
+        f'$ws = New-Object -ComObject WScript.Shell;'
+        f'$s = $ws.CreateShortcut("{shortcut_path}");'
+        f'$s.TargetPath = "{target}";'
+        f'$s.Arguments = "{arguments}";'
+        f'$s.WorkingDirectory = "{app_dir}";'
+        f'$s.WindowStyle = {window_style};'
+        f'$s.IconLocation = "{icon}";'
+        f'$s.Save()'
+    )
+
 def create_windows_shortcut():
     """Creates a desktop shortcut on Windows."""
     app_dir = os.path.abspath(os.path.dirname(__file__))
     desktop = os.path.join(os.path.expanduser("~"), "Desktop")
     shortcut_path = os.path.join(desktop, "Sammie-Roto-2.lnk")
-    target = os.path.join(app_dir, "run_sammie.bat")
-    icon = os.path.join(app_dir, "sammie", "resources", "icon.ico")
-
-    ps_script = (
-        f'$ws = New-Object -ComObject WScript.Shell;'
-        f'$s = $ws.CreateShortcut("{shortcut_path}");'
-        f'$s.TargetPath = "{target}";'
-        f'$s.WorkingDirectory = "{app_dir}";'
-        f'$s.IconLocation = "{icon}";'
-        f'$s.Save()'
-    )
+    ps_script = windows_shortcut_script(app_dir, shortcut_path)
 
     try:
         subprocess.check_call(
