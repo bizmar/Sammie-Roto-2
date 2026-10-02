@@ -1,9 +1,3 @@
-<div align="center">
-
-# ⚠️ PERSONAL FORK - FOR MY OWN USE ONLY ⚠️
-
-</div>
-
 > [!CAUTION]
 > ## This is a personal, vibe-coded, hacked-up fork. It is not meant for anyone else.
 >
