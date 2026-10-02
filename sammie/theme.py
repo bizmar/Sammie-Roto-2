@@ -182,6 +182,12 @@ QSlider#timeline::handle:horizontal:hover { background: $on_accent; }
 /* ---- panels and status bar ---- */
 QLabel#panelTitle { color: $text; font-weight: 600; padding: 4px 2px; }
 
+/* ---- icon-only buttons (no button chrome until hovered) ---- */
+QPushButton#iconButton { background: transparent; border: 0; border-radius: $radius; padding: 0; }
+QPushButton#iconButton:hover { background: $control_hover; }
+QPushButton#iconButton:pressed { background: $control_pressed; }
+QPushButton#iconButton[keyboardFocus="true"] { border: 1px solid $accent_hover; }
+
 /* ---- segmented controls ---- */
 QFrame#segmented { background: $field; border: 1px solid $hairline; border-radius: 8px; }
 QPushButton[segment="true"] {

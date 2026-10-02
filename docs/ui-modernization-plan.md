@@ -134,7 +134,7 @@ Each phase is independently shippable and leaves the app working. Phases 1-2 are
 | 5 | Matching panel titles, per-platform console font, status bar divider, dialogs checked. |
 | 6 | Contrast measured and fixed, keyboard focus rings, 150% and 200% scaling checked, Reset Interface and layout persistence tested. |
 
-`tools/ui_checks.py` runs 67 checks without a display or the models: collapsible sections, slider rows (read-outs, saving, reset, gamma's decimal display, loading from settings), timeline geometry, click and drag, the per-view options, keyboard focus, the view selector and toolbar buttons, layout persistence and Reset Interface.
+`tools/ui_checks.py` runs 74 checks without a display or the models: collapsible sections, slider rows (read-outs, saving, reset, gamma's decimal display, loading from settings), timeline geometry, click and drag, the per-view options, keyboard focus, the view selector and toolbar buttons, layout persistence and Reset Interface.
 
 ### Where it differs from the plan
 
@@ -142,7 +142,7 @@ Each phase is independently shippable and leaves the app working. Phases 1-2 are
 - **Icons are drawn here, not taken from Lucide or Phosphor.** The icon CDN was not reachable from the build environment, and a hand-drawn set in one consistent style avoids a third-party licence. The old Fugue PNGs are no longer used by the code but are still embedded in `sammie/resources/resources.py` (the source `.qrc` is not in the repo), so the README credit stays.
 - **`add_slider_row` helper instead of a `SliderRow` widget.** Some rows share a grid with combo boxes whose columns must line up, and other code reads each slider and read-out by name. The helper keeps both.
 - **Number fields are read-outs, not editable or draggable.** Double-click on the label still resets.
-- **The view selector is now a prototype segmented control** (stage: Segmentation / Matting / Removal, then mode: Edit / Matte / BG Color). A hidden combo box still holds the current view, so every handler that reads or sets it is unchanged. Load Video and Export Video buttons sit either side of it and call the same handlers as the File menu. Known rough edge: the Export button shifts left when the mode control shrinks (Matting) or hides (Removal).
+- **The view selector is now a prototype segmented control** (stage: Segmentation / Matting / Removal, then mode: Edit / Matte / BG Color). A hidden combo box still holds the current view, so every handler that reads or sets it is unchanged. Load Video and Export Video buttons sit either side of it and call the same handlers as the File menu. Export Video is the last item on the bar, to the right of the per-view options, so it never moves when the mode control shrinks or hides. The point list's delete buttons are icon-only (a trash can that turns red on hover).
 - **A second blue.** White text on the accent blue measured 3.6:1, so surfaces that carry text (menu highlight, selected rows, checked buttons) use a deeper `selection` blue at 4.8:1. Graphics keep the brighter accent.
 - **Keyboard focus rings use an event filter** that flags widgets focused by Tab, Shift+Tab or a shortcut, so mouse clicks don't leave rings behind.
 - **Sections that share a title open and close together**, so Instructions in the Matting and Removal tabs stay in step.

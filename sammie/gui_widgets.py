@@ -7,6 +7,7 @@ This module contains reusable UI components including:
 - UpdateChecker: Checks for application updates
 - ClickableLabel: QLabel with double-click support
 - CollapsibleGroup: titled sidebar section that opens and closes
+- HoverIconButton: icon-only button whose icon changes colour under the mouse
 - SegmentedControl, ViewSelector: pill-style exclusive buttons, and the view switcher built from them
 - add_slider_row: label, slider and value read-out as one row of a grid
 - HotkeysHelpDialog: Displays keyboard shortcuts
@@ -273,6 +274,29 @@ class CollapsibleGroup(QFrame):
         super().showEvent(event)
 
 
+class HoverIconButton(QPushButton):
+    """
+    An icon-only button whose icon changes colour while the mouse is over it.
+
+    QIcon's Active mode can't be used for this: styles apply it for keyboard
+    focus, not hover, so the icon is swapped on enter and leave instead.
+    """
+    def __init__(self, name, color="text_dim", hover_color="text", parent=None):
+        super().__init__(parent)
+        self.setObjectName("iconButton")
+        self._normal = icons.icon(name, color=color)
+        self._hover = icons.icon(name, color=hover_color)
+        self.setIcon(self._normal)
+
+    def enterEvent(self, event):
+        self.setIcon(self._hover)
+        super().enterEvent(event)
+
+    def leaveEvent(self, event):
+        self.setIcon(self._normal)
+        super().leaveEvent(event)
+
+
 class SegmentedControl(QFrame):
     """A row of mutually exclusive buttons in one pill, for choosing between a few modes."""
     selected = Signal(str)  # the key of the button the user picked
@@ -474,7 +498,7 @@ class PointTable(QTableWidget):
         self.setColumnWidth(2, 60)    # Type
         self.setColumnWidth(3, 60)    # X
         self.setColumnWidth(4, 60)    # Y
-        self.setColumnWidth(5, 80)    # Action (Delete button)
+        self.setColumnWidth(5, 50)    # Action (Delete button)
     
     def _create_colored_object_id_widget(self, object_id):
         """Create a widget with colored square and object ID number"""
@@ -577,8 +601,9 @@ class PointTable(QTableWidget):
     
     def _add_delete_button(self, row):
         """Add a delete button to the specified row"""
-        delete_btn = QPushButton("Delete")
-        delete_btn.setMaximumWidth(70)
+        delete_btn = HoverIconButton("trash", color="text_dim", hover_color="danger")
+        delete_btn.setToolTip("Delete this point")
+        delete_btn.setFixedSize(30, 24)
         
         # Connect the button to delete this specific row
         delete_btn.clicked.connect(lambda _, r=row: self.delete_selected_row(r))

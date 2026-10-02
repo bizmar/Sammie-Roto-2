@@ -1463,7 +1463,7 @@ class MainWindow(QMainWindow):
         return self.bottom_splitter
     
     def _create_viewer_toolbar(self, layout):
-        """Create the bar above the viewer: Load Video, the view selector, Export Video, then options for the view"""
+        """Create the bar above the viewer: Load Video and the view selector on the left; options for the view and Export Video on the right"""
         toolbar = QHBoxLayout()
         toolbar.setContentsMargins(0, 0, 0, 0)
         toolbar.setSpacing(8)
@@ -1490,11 +1490,6 @@ class MainWindow(QMainWindow):
         self.view_selector = ViewSelector(self.view_combo)
         toolbar.addWidget(self.view_selector)
 
-        export_btn = QPushButton("Export Video")
-        export_btn.setIcon(icons.icon("export"))
-        export_btn.setToolTip("Export the video or image sequence (Ctrl+E)")
-        export_btn.clicked.connect(lambda *_: self.export_video())
-        toolbar.addWidget(export_btn)
         toolbar.addStretch()
 
         # Dynamic widgets container (checkboxes, colour picker)
@@ -1502,6 +1497,13 @@ class MainWindow(QMainWindow):
         self.dynamic_widgets_layout = QHBoxLayout(self.dynamic_widgets_container)
         self.dynamic_widgets_layout.setContentsMargins(0, 0, 0, 0)
         toolbar.addWidget(self.dynamic_widgets_container)
+
+        # Last, so it stays put whatever the selector and the view options take up
+        export_btn = QPushButton("Export Video")
+        export_btn.setIcon(icons.icon("export"))
+        export_btn.setToolTip("Export the video or image sequence (Ctrl+E)")
+        export_btn.clicked.connect(lambda *_: self.export_video())
+        toolbar.addWidget(export_btn)
 
         # Initialize dynamic widget references
         self.show_masks_checkbox = None

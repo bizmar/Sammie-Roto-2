@@ -272,6 +272,42 @@ def check_view_selector_and_toolbar_buttons(app):
     check(calls == ["load", "export"], f"toolbar: Load Video and Export Video call the same handlers as the File menu ({calls})")
     layout_x = [load.mapTo(window, load.rect().topLeft()).x(), selector.mapTo(window, selector.rect().topLeft()).x(), export.mapTo(window, export.rect().topLeft()).x()]
     check(layout_x == sorted(layout_x), "toolbar: order is Load Video, view selector, Export Video")
+    # Export Video is the last thing on the bar, and never moves
+    export_x, export_right = set(), set()
+    for view in ("Segmentation-Edit", "Segmentation-BGcolor", "Segmentation-Matte", "Matting-Matte", "Matting-BGcolor", "ObjectRemoval"):
+        combo.setCurrentText(view)
+        app.processEvents()
+        export_x.add(export.mapTo(window, export.rect().topLeft()).x())
+        export_right.add(export.mapTo(window, export.rect().topRight()).x())
+    check(len(export_x) == 1, f"toolbar: Export Video stays in the same place in all six views ({sorted(export_x)})")
+    options = window.dynamic_widgets_container
+    check(options.mapTo(window, options.rect().topRight()).x() <= export.mapTo(window, export.rect().topLeft()).x(), "toolbar: the view options sit to the left of Export Video")
+    viewer_right = window.viewer.mapTo(window, window.viewer.rect().topRight()).x()
+    check(abs(viewer_right - max(export_right)) <= 10, f"toolbar: Export Video lines up with the viewer's right edge ({max(export_right)} vs {viewer_right})")
+    window.close()
+
+
+def check_point_delete_buttons(app):
+    from PySide6.QtWidgets import QPushButton
+
+    window = ui_preview.create_main_window()
+    window.show()
+    window.point_manager.add_point(10, 0, True, 100, 100)
+    window.point_manager.add_point(10, 0, False, 50, 60)
+    app.processEvents()
+    buttons = [b for b in window.point_table.findChildren(QPushButton) if b.objectName() == "iconButton"]
+    check(len(buttons) == 2, f"point list: each point has a delete button ({len(buttons)})")
+    check(all(b.text() == "" and not b.icon().isNull() for b in buttons), "point list: the delete buttons are icon-only")
+    check(all(b.toolTip() for b in buttons), "point list: the delete buttons have a tooltip")
+
+    from PySide6.QtCore import QEvent
+    from PySide6.QtGui import QEnterEvent
+    button = buttons[0]
+    idle = button.icon().cacheKey()
+    app.sendEvent(button, QEnterEvent(button.rect().center(), button.rect().center(), button.rect().center()))
+    hovered = button.icon().cacheKey()
+    app.sendEvent(button, QEvent(QEvent.Leave))
+    check(hovered != idle and button.icon().cacheKey() == idle, "point list: the delete icon changes under the mouse and goes back")
     window.close()
 
 
@@ -322,6 +358,7 @@ def main():
     check_reset_interface_and_layout_persistence(app)
     check_timeline_and_view_bar(app)
     check_view_selector_and_toolbar_buttons(app)
+    check_point_delete_buttons(app)
     check_keyboard_focus(app)
 
     sys.__stdout__.write(f"\n{len(failures)} failure(s)\n")
