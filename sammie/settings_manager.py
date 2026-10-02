@@ -13,6 +13,8 @@ class ApplicationSettings:
     main_splitter_sizes: list = field(default_factory=lambda: [1000, 300])
     vertical_splitter_sizes: list = field(default_factory=lambda: [600, 208])
     bottom_splitter_sizes: list = field(default_factory=lambda: [450, 550])
+    # Titles of sidebar sections the user has closed
+    collapsed_sections: list = field(default_factory=list)
     
     # Window state
     window_width: int = 1400

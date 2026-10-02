@@ -146,11 +146,44 @@ QGroupBox::title {
     left: 8px; padding: 0 4px; color: $text_dim;
 }
 
+/* ---- hint blocks (usage notes in the sidebar) ---- */
+QLabel#hint {
+    background: $panel; padding: 10px;
+    border: 0; border-radius: $radius_panel; font-size: 11px;
+}
+
+/* ---- sidebar sections ---- */
+QFrame#collapsibleGroup { background: transparent; border: 0; border-bottom: 1px solid $hairline; }
+QWidget#sectionBody { background: transparent; }
+QPushButton#sectionHeader, QPushButton#sectionHeader:checked {
+    background: transparent; color: $text; border: 0; border-radius: 0;
+    font-weight: 600; text-align: left;
+    padding: 8px 12px; min-height: 18px;
+    qproperty-iconSize: 12px 12px;
+}
+QPushButton#sectionHeader:hover { background: $control_pressed; }
+QPushButton#sectionHeader:pressed { background: $control_pressed; }
+
+/* ---- inspector sliders ---- */
+QSlider#inspectorSlider { min-height: 20px; }
+QSlider#inspectorSlider::groove:horizontal { height: 4px; background: $control_hover; border-radius: 2px; }
+QSlider#inspectorSlider::sub-page:horizontal { background: $accent; border-radius: 2px; }
+QSlider#inspectorSlider::handle:horizontal {
+    background: $text; width: 12px; height: 12px; margin: -4px 0; border-radius: 6px;
+}
+QSlider#inspectorSlider::handle:horizontal:hover { background: $on_accent; }
+QSlider#inspectorSlider::sub-page:horizontal:disabled { background: $text_off; }
+QLabel#sliderValue {
+    color: $text; background: $field;
+    border: 1px solid $hairline; border-radius: 4px;
+    padding: 1px 6px; min-width: 28px;
+}
+
 /* ---- tabs ---- */
-QTabWidget::pane { border: 1px solid $hairline; border-radius: $radius_panel; top: -1px; }
+QTabWidget::pane { border: 0; border-top: 1px solid $hairline; top: -1px; }
 QTabBar::tab {
     background: transparent; color: $text_dim;
-    padding: 6px 12px; border: 0; border-bottom: 2px solid transparent;
+    padding: 7px 6px; border: 0; border-bottom: 2px solid transparent;
 }
 QTabBar::tab:hover { color: $text; }
 QTabBar::tab:selected { color: $text; border-bottom: 2px solid $accent; }

@@ -6,6 +6,8 @@ This module contains reusable UI components including:
 - ColorDisplayWidget: Displays object colors
 - UpdateChecker: Checks for application updates
 - ClickableLabel: QLabel with double-click support
+- CollapsibleGroup: titled sidebar section that opens and closes
+- add_slider_row: label, slider and value read-out as one row of a grid
 - HotkeysHelpDialog: Displays keyboard shortcuts
 - PointTable: Table widget for displaying segmentation points
 - ImageViewer: Custom graphics view for image display with zoom/pan
@@ -23,7 +25,7 @@ from PySide6.QtWidgets import (
     QHeaderView, QPushButton, QWidget, QHBoxLayout, QVBoxLayout,
     QDialog, QGraphicsView, QGraphicsScene, QGraphicsPixmapItem,
     QColorDialog, QSlider, QStyleOptionSlider, QStyle, QMessageBox,
-    QApplication, QLineEdit
+    QApplication, QLineEdit, QFrame
 )
 from PySide6.QtGui import (
     QPixmap, QMouseEvent, QWheelEvent, QPainter, QColor, QIcon,
@@ -190,6 +192,109 @@ class ClickableLabel(QLabel):
         if event.button() == Qt.LeftButton:
             self.doubleClicked.emit()
         super().mouseDoubleClickEvent(event)
+
+
+# ==================== COLLAPSIBLE SECTION ====================
+class CollapsibleGroup(QFrame):
+    """
+    A titled sidebar section. Clicking the header opens or closes it.
+
+    Put the contents in a layout on `.body`, the way you would on a QGroupBox:
+
+        group = CollapsibleGroup("Tracking")
+        layout = QVBoxLayout(group.body)
+
+    Hiding the body leaves each child's own visibility alone, so widgets the
+    app shows and hides itself keep working while a section is closed. Open or
+    closed is remembered between runs.
+    """
+    toggled = Signal(bool)  # True when expanded
+
+    def __init__(self, title, parent=None):
+        super().__init__(parent)
+        self.setObjectName("collapsibleGroup")
+        self._title = title
+        self._margins_applied = False
+
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.setSpacing(0)
+
+        self.header = QPushButton(title)
+        self.header.setObjectName("sectionHeader")
+        self.header.setCheckable(True)
+        self.header.setCursor(Qt.PointingHandCursor)
+        self.header.setFocusPolicy(Qt.TabFocus)
+        outer.addWidget(self.header)
+
+        self.body = QWidget()
+        self.body.setObjectName("sectionBody")
+        outer.addWidget(self.body)
+
+        collapsed = get_settings_manager().app_settings.collapsed_sections
+        self.set_expanded(title not in collapsed, remember=False)
+        self.header.toggled.connect(self.set_expanded)
+
+    def is_expanded(self):
+        return self.body.isVisibleTo(self)
+
+    def set_expanded(self, expanded, remember=True):
+        self.header.blockSignals(True)
+        self.header.setChecked(expanded)
+        self.header.blockSignals(False)
+        self.header.setIcon(icons.icon("chevron-down" if expanded else "chevron-right", color="text_dim"))
+        self.body.setVisible(expanded)
+
+        if remember:
+            mgr = get_settings_manager()
+            collapsed = [t for t in mgr.app_settings.collapsed_sections if t != self._title]
+            if not expanded:
+                collapsed.append(self._title)
+            mgr.app_settings.collapsed_sections = collapsed
+            mgr.save_app_settings()
+        self.toggled.emit(expanded)
+
+    def showEvent(self, event):
+        # The call sites create their layouts with Qt's default margins.
+        # Give every section the same inset, once, when it first appears.
+        if not self._margins_applied and self.body.layout() is not None:
+            self.body.layout().setContentsMargins(12, 8, 12, 12)
+            self._margins_applied = True
+        super().showEvent(event)
+
+
+def add_slider_row(grid, row, label_text, minimum, maximum, value, default,
+                   tooltip="", display=str):
+    """
+    Add "label | slider | value" as one row of a QGridLayout and return
+    (slider, value_label).
+
+    The read-out follows the slider, and double-clicking the label resets the
+    slider to `default`. `value` and `default` are in slider units; `display`
+    turns a slider value into the text shown (for example, a gamma slider that
+    holds 100 for 1.0). Connect to slider.valueChanged to save the value.
+    """
+    label = ClickableLabel(label_text)
+    label.setToolTip(f"Double-click to reset to default value ({display(default)})")
+
+    slider = QSlider(Qt.Horizontal)
+    slider.setObjectName("inspectorSlider")
+    slider.setRange(minimum, maximum)
+    slider.setValue(value)
+    if tooltip:
+        slider.setToolTip(tooltip)
+
+    value_label = QLabel(display(value))
+    value_label.setObjectName("sliderValue")
+    value_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+
+    grid.addWidget(label, row, 0)
+    grid.addWidget(slider, row, 1)
+    grid.addWidget(value_label, row, 2)
+
+    slider.valueChanged.connect(lambda v: value_label.setText(display(v)))
+    label.doubleClicked.connect(lambda: slider.setValue(default))
+    return slider, value_label
 
 
 # ==================== HOTKEYS HELP DIALOG ====================

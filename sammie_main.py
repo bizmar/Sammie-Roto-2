@@ -41,7 +41,7 @@ from sammie.settings_manager import get_settings_manager, initialize_settings, A
 from sammie.gui_widgets import (
     ConsoleRedirect, ColorDisplayWidget, UpdateChecker, ClickableLabel,
     HotkeysHelpDialog, PointTable, ImageViewer, ColorPickerWidget,
-    FrameSlider, show_message_dialog
+    FrameSlider, show_message_dialog, CollapsibleGroup, add_slider_row
 )
 
 # ==================== VERSION ====================
@@ -108,8 +108,8 @@ class SegmentationTab(QWidget):
     
     def _create_add_point_group(self, layout):
         """Create the Add Point group with object selector and point type"""
-        add_point_group = QGroupBox("Add Point")
-        add_point_layout = QVBoxLayout(add_point_group)
+        add_point_group = CollapsibleGroup("Add Point")
+        add_point_layout = QVBoxLayout(add_point_group.body)
         
         # Object selector with color display
         object_row = QHBoxLayout()
@@ -150,16 +150,7 @@ class SegmentationTab(QWidget):
         
         # Instructions for mouse clicks
         instructions_label = QLabel("Left-click: Add positive point\nCtrl+Left-click: Add negative point\nRight-click: Add negative point\nHold Shift: Live Preview")
-        instructions_label.setStyleSheet("""
-            QLabel {
-                background-color: palette(alternate-base);
-                padding: 10px;
-                border: 1px solid palette(mid);
-                border-radius: 5px;
-                font-size: 11px;
-                line-height: 1.3;
-            }
-        """)
+        instructions_label.setObjectName("hint")
 
         instructions_label.setAlignment(Qt.AlignCenter)
         add_point_layout.addWidget(instructions_label)
@@ -168,8 +159,8 @@ class SegmentationTab(QWidget):
     
     def _create_model_selection_group(self, layout):
         """Create the Model Selection group"""
-        model_group = QGroupBox("Model Selection")
-        model_layout_row = QHBoxLayout(model_group)
+        model_group = CollapsibleGroup("Model Selection")
+        model_layout_row = QHBoxLayout(model_group.body)
         
         settings_mgr = get_settings_manager()
         settings_mgr.get_session_setting("default_sam_model", "Base")
@@ -187,8 +178,8 @@ class SegmentationTab(QWidget):
 
     def _create_clear_points_group(self, layout):
         """Create the Clear Points group with all clearing actions"""
-        clear_group = QGroupBox("Clear Points")
-        clear_layout = QVBoxLayout(clear_group)
+        clear_group = CollapsibleGroup("Clear Points")
+        clear_layout = QVBoxLayout(clear_group.body)
         
         button_configs = [
             ("Remove Last Point", "undo_last_point_btn", 
@@ -211,8 +202,8 @@ class SegmentationTab(QWidget):
     
     def _create_tracking_group(self, layout):
         """Create the Tracking group with tracking-related actions"""
-        tracking_group = QGroupBox("Tracking")
-        tracking_layout = QVBoxLayout(tracking_group)
+        tracking_group = CollapsibleGroup("Tracking")
+        tracking_layout = QVBoxLayout(tracking_group.body)
 
         # Track Objects button (full propagation)
         self.track_objects_btn = QPushButton(" Track Objects ")
@@ -266,8 +257,8 @@ class SegmentationTab(QWidget):
     
     def _create_parameter_sliders(self, layout):
         """Create parameter adjustment sliders"""
-        sliders_group = QGroupBox("Postprocessing")
-        sliders_layout = QGridLayout(sliders_group)
+        sliders_group = CollapsibleGroup("Postprocessing")
+        sliders_layout = QGridLayout(sliders_group.body)
         
         settings_mgr = get_settings_manager()
         slider_configs = [
@@ -282,47 +273,20 @@ class SegmentationTab(QWidget):
         ]
         
         for i, (label_text, min_val, max_val, default_val, current_val, attr_prefix, tooltip) in enumerate(slider_configs):
-            # Create clickable label for reset functionality
-            label = ClickableLabel(label_text)
-            label.setToolTip(f"Double-click to reset to default value ({default_val})")
-            sliders_layout.addWidget(label, i, 0)
-            
-            # Create slider with tooltip
-            slider = QSlider(Qt.Horizontal)
-            slider.setRange(min_val, max_val)
-            slider.setValue(current_val)
-            slider.setToolTip(tooltip)
-            sliders_layout.addWidget(slider, i, 1)
-            
-            # Create value display
-            value_label = QLabel(str(current_val))
-            value_label.setMinimumWidth(30)
-            value_label.setAlignment(Qt.AlignCenter)
-            sliders_layout.addWidget(value_label, i, 2)
-            
-            # Connect slider to value display and save settings
-            slider.valueChanged.connect(
-                lambda v, lbl=value_label: lbl.setText(str(v))
+            slider, value_label = add_slider_row(
+                sliders_layout, i, label_text, min_val, max_val, current_val,
+                default=default_val, tooltip=tooltip
             )
             slider.valueChanged.connect(
                 lambda v, key=attr_prefix: self._save_slider_value(key, v)
             )
-            
-            # Connect label double-click to reset slider
-            label.doubleClicked.connect(
-                lambda default=default_val, s=slider: self._reset_slider_to_default(s, default)
-            )
-            
+
             # Store references
             setattr(self, f"{attr_prefix}_slider", slider)
             setattr(self, f"{attr_prefix}_value", value_label)
         
         layout.addWidget(sliders_group)
     
-    def _reset_slider_to_default(self, slider, default_value):
-        """Reset a slider to its default value"""
-        slider.setValue(default_value)
-
     def _save_slider_value(self, key, value):
         """Save slider value to session settings"""
         settings_mgr = get_settings_manager()
@@ -431,8 +395,8 @@ class MattingTab(QWidget):
         self._create_instructions_section(layout)
         
         # Run/Clear button
-        matting_group = QGroupBox("Matting")
-        matting_layout = QVBoxLayout(matting_group)
+        matting_group = CollapsibleGroup("Matting")
+        matting_layout = QVBoxLayout(matting_group.body)
         self.run_matting_btn = QPushButton(" Run Matting ")
         self.run_matting_btn.setLayoutDirection(Qt.RightToLeft)
         matting_layout.addWidget(self.run_matting_btn)
@@ -442,8 +406,8 @@ class MattingTab(QWidget):
         layout.addWidget(matting_group)
         
         # MatAnyone Processing settings
-        processing_group = QGroupBox("Processing Settings")
-        processing_layout = QVBoxLayout(processing_group)
+        processing_group = CollapsibleGroup("Processing Settings")
+        processing_layout = QVBoxLayout(processing_group.body)
         model_layout = QHBoxLayout()
         res_layout = QHBoxLayout()
         overlap_layout = QHBoxLayout()
@@ -517,8 +481,8 @@ class MattingTab(QWidget):
     
     def _create_instructions_section(self, layout):
         """Create the instructions section for the matting tab"""
-        instructions_group = QGroupBox("Instructions")
-        instructions_layout = QVBoxLayout(instructions_group)
+        instructions_group = CollapsibleGroup("Instructions")
+        instructions_layout = QVBoxLayout(instructions_group.body)
 
         self.instructions_text = QLabel()
         self.instructions_text.setWordWrap(True)
@@ -526,24 +490,15 @@ class MattingTab(QWidget):
         self.instructions_text.setOpenExternalLinks(True)
         self.instructions_text.setAlignment(Qt.AlignTop | Qt.AlignLeft)
 
-        self.instructions_text.setStyleSheet("""
-            QLabel {
-                background-color: palette(alternate-base);
-                padding: 10px;
-                border: 1px solid palette(mid);
-                border-radius: 5px;
-                font-size: 11px;
-                line-height: 1.3;
-            }
-        """)
+        self.instructions_text.setObjectName("hint")
 
         instructions_layout.addWidget(self.instructions_text)
         layout.addWidget(instructions_group)
 
     def _create_parameter_sliders(self, layout):
         """Create parameter adjustment sliders for matting"""
-        sliders_group = QGroupBox("Postprocessing")
-        sliders_layout = QGridLayout(sliders_group)
+        sliders_group = CollapsibleGroup("Postprocessing")
+        sliders_layout = QGridLayout(sliders_group.body)
         
         settings_mgr = get_settings_manager()
 
@@ -557,73 +512,30 @@ class MattingTab(QWidget):
             lambda v: str(v), lambda v: v, lambda v: v)
         ]
 
-        for i, (label_text, min_val, max_val, setting_key, fallback_default, tooltip, 
+        for i, (label_text, min_val, max_val, setting_key, fallback_default, tooltip,
                 display_func, slider_func, save_func) in enumerate(slider_configs):
-            
+
             # Get default from settings manager
             default_val = getattr(settings_mgr.app_settings, f"default_{setting_key}", fallback_default)
             current_val = settings_mgr.get_session_setting(setting_key, default_val)
-            
-            # Create clickable label for reset functionality
-            label = ClickableLabel(label_text)
-            label.setToolTip(f"Double-click to reset to default value ({display_func(slider_func(default_val))})")
-            sliders_layout.addWidget(label, i, 0)
-            
-            # Create slider with tooltip
-            slider = QSlider(Qt.Horizontal)
-            slider.setRange(min_val, max_val)
-            slider.setValue(slider_func(current_val))
-            slider.setToolTip(tooltip)
-            sliders_layout.addWidget(slider, i, 1)
-            
-            # Create value display
-            value_label = QLabel(display_func(slider_func(current_val)))
-            value_label.setMinimumWidth(35 if setting_key == "matany_gamma" else 30)
-            value_label.setAlignment(Qt.AlignCenter)
-            sliders_layout.addWidget(value_label, i, 2)
-            
-            # Connect slider to value display and save settings
+
+            slider, value_label = add_slider_row(
+                sliders_layout, i, label_text, min_val, max_val, slider_func(current_val),
+                default=slider_func(default_val), tooltip=tooltip, display=display_func
+            )
+            slider.valueChanged.connect(
+                lambda v, key=setting_key, func=save_func: self._save_slider_value(key, func(v))
+            )
+
+            # Store references
             if setting_key == "matany_gamma":
-                slider.valueChanged.connect(self._update_gamma_value)
-                slider.valueChanged.connect(
-                    lambda v, func=save_func: self._save_slider_value("matany_gamma", func(v))
-                )
-                # Connect label double-click to reset slider
-                label.doubleClicked.connect(
-                    lambda default=default_val: self._reset_gamma_to_default(default)
-                )
-                # Store references
                 self.gamma_slider = slider
                 self.gamma_value = value_label
             else:
-                slider.valueChanged.connect(
-                    lambda v, lbl=value_label, func=display_func: lbl.setText(func(v))
-                )
-                slider.valueChanged.connect(
-                    lambda v, key=setting_key, func=save_func: self._save_slider_value(key, func(v))
-                )
-                # Connect label double-click to reset slider
-                label.doubleClicked.connect(
-                    lambda s=slider, default=default_val, func=slider_func: self._reset_slider_to_default(s, func(default))
-                )
-                # Store references
                 self.shrink_grow_slider = slider
                 self.shrink_grow_value = value_label
         
         layout.addWidget(sliders_group)
-
-    def _reset_gamma_to_default(self, default_value):
-        """Reset gamma slider to its default value"""
-        self.gamma_slider.setValue(int(default_value * 100))
-
-    def _reset_slider_to_default(self, slider, default_value):
-        """Reset a slider to its default value"""
-        slider.setValue(default_value)
-        
-    def _update_gamma_value(self, value):
-        """Update gamma value display (convert from int to decimal)"""
-        gamma_val = value / 100.0
-        self.gamma_value.setText(f"{gamma_val:.1f}")
 
     def _update_instructions(self, model):
         """Update the instructions based on the selected matting model"""
@@ -762,8 +674,8 @@ class ObjectRemovalTab(QWidget):
         self._create_instructions_section(layout)
         
         # Run/Clear button
-        removal_group = QGroupBox("Object Removal")
-        removal_layout = QVBoxLayout(removal_group)
+        removal_group = CollapsibleGroup("Object Removal")
+        removal_layout = QVBoxLayout(removal_group.body)
         self.run_removal_btn = QPushButton(" Run Object Removal ")
         self.run_removal_btn.setLayoutDirection(Qt.RightToLeft)
         removal_layout.addWidget(self.run_removal_btn)
@@ -789,8 +701,8 @@ class ObjectRemovalTab(QWidget):
     
     def _create_instructions_section(self, layout):
         """Create the instructions section for the object removal tab"""
-        instructions_group = QGroupBox("Instructions")
-        instructions_layout = QVBoxLayout(instructions_group)
+        instructions_group = CollapsibleGroup("Instructions")
+        instructions_layout = QVBoxLayout(instructions_group.body)
         
         # Create the instruction text
         instructions_text = QLabel()
@@ -808,24 +720,15 @@ class ObjectRemovalTab(QWidget):
         instructions_text.setText(instruction_content)
         
         # Style the text
-        instructions_text.setStyleSheet("""
-            QLabel {
-                background-color: palette(alternate-base);
-                padding: 10px;
-                border: 1px solid palette(mid);
-                border-radius: 5px;
-                font-size: 11px;
-                line-height: 1.3;
-            }
-        """)
+        instructions_text.setObjectName("hint")
         
         instructions_layout.addWidget(instructions_text)
         layout.addWidget(instructions_group)
     
     def _create_method_selection(self, layout):
         """Create method selection (MiniMax-Remover vs OpenCV)"""
-        method_group = QGroupBox("Method")
-        method_layout = QHBoxLayout(method_group)
+        method_group = CollapsibleGroup("Method")
+        method_layout = QHBoxLayout(method_group.body)
         
         method_layout.addWidget(QLabel("Method:"))
         
@@ -867,36 +770,19 @@ class ObjectRemovalTab(QWidget):
         """Create the shared shrink/grow slider used by both methods"""
         settings_mgr = get_settings_manager()
         
-        shrink_grow_group = QGroupBox("Mask Adjustment")
-        shrink_grow_layout = QGridLayout(shrink_grow_group)
+        shrink_grow_group = CollapsibleGroup("Mask Adjustment")
+        shrink_grow_layout = QGridLayout(shrink_grow_group.body)
         
         default_grow = getattr(settings_mgr.app_settings, "default_inpaint_grow", 5)
         current_grow = settings_mgr.get_session_setting("inpaint_grow", default_grow)
         
-        label = ClickableLabel("Shrink/Grow:")
-        label.setToolTip(f"Double-click to reset to default value ({default_grow})")
-        shrink_grow_layout.addWidget(label, 0, 0)
-        
-        self.shrink_grow_slider = QSlider(Qt.Horizontal)
-        self.shrink_grow_slider.setRange(-20, 20)
-        self.shrink_grow_slider.setValue(current_grow)
-        self.shrink_grow_slider.setToolTip("Shrink (erode) or grow (dilate) the mask before inpainting. This is additive to the same setting on the Segmentation tab.")
-        shrink_grow_layout.addWidget(self.shrink_grow_slider, 0, 1)
-        
-        self.shrink_grow_value = QLabel(str(current_grow))
-        self.shrink_grow_value.setMinimumWidth(30)
-        self.shrink_grow_value.setAlignment(Qt.AlignCenter)
-        shrink_grow_layout.addWidget(self.shrink_grow_value, 0, 2)
-        
-        self.shrink_grow_slider.valueChanged.connect(
-            lambda v: self.shrink_grow_value.setText(str(v))
+        self.shrink_grow_slider, self.shrink_grow_value = add_slider_row(
+            shrink_grow_layout, 0, "Shrink/Grow:", -20, 20, current_grow,
+            default=default_grow,
+            tooltip="Shrink (erode) or grow (dilate) the mask before inpainting. This is additive to the same setting on the Segmentation tab."
         )
         self.shrink_grow_slider.valueChanged.connect(
             lambda v: self._save_slider_value("inpaint_grow", v)
-        )
-        
-        label.doubleClicked.connect(
-            lambda: self._reset_slider_to_default(self.shrink_grow_slider, default_grow)
         )
         
         layout.addWidget(shrink_grow_group)
@@ -919,8 +805,8 @@ class ObjectRemovalTab(QWidget):
         opencv_layout.setContentsMargins(0, 0, 0, 0)
 
         # Algorithm selection
-        algorithm_group = QGroupBox("Algorithm")
-        algorithm_layout = QHBoxLayout(algorithm_group)
+        algorithm_group = CollapsibleGroup("Algorithm")
+        algorithm_layout = QHBoxLayout(algorithm_group.body)
         
         algorithm_layout.addWidget(QLabel("Algorithm:"))
         
@@ -941,8 +827,8 @@ class ObjectRemovalTab(QWidget):
         opencv_layout.addWidget(algorithm_group)
         
         # OpenCV-specific sliders
-        sliders_group = QGroupBox("Parameters")
-        sliders_layout = QGridLayout(sliders_group)
+        sliders_group = CollapsibleGroup("Parameters")
+        sliders_layout = QGridLayout(sliders_group.body)
         
         slider_configs = [
             ("Inpaint Radius:", 1, 10, "inpaint_radius", 3,
@@ -952,36 +838,18 @@ class ObjectRemovalTab(QWidget):
         
         for i, (label_text, min_val, max_val, setting_key, fallback_default, tooltip,
                 display_func, slider_func, save_func) in enumerate(slider_configs):
-            
+
             default_val = getattr(settings_mgr.app_settings, f"default_{setting_key}", fallback_default)
             current_val = settings_mgr.get_session_setting(setting_key, default_val)
-            
-            label = ClickableLabel(label_text)
-            label.setToolTip(f"Double-click to reset to default value ({display_func(slider_func(default_val))})")
-            sliders_layout.addWidget(label, i, 0)
-            
-            slider = QSlider(Qt.Horizontal)
-            slider.setRange(min_val, max_val)
-            slider.setValue(slider_func(current_val))
-            slider.setToolTip(tooltip)
-            sliders_layout.addWidget(slider, i, 1)
-            
-            value_label = QLabel(display_func(slider_func(current_val)))
-            value_label.setMinimumWidth(30)
-            value_label.setAlignment(Qt.AlignCenter)
-            sliders_layout.addWidget(value_label, i, 2)
-            
-            slider.valueChanged.connect(
-                lambda v, lbl=value_label, func=display_func: lbl.setText(func(v))
+
+            slider, value_label = add_slider_row(
+                sliders_layout, i, label_text, min_val, max_val, slider_func(current_val),
+                default=slider_func(default_val), tooltip=tooltip, display=display_func
             )
             slider.valueChanged.connect(
                 lambda v, key=setting_key, func=save_func: self._save_slider_value(key, func(v))
             )
-            
-            label.doubleClicked.connect(
-                lambda s=slider, default=default_val, func=slider_func: self._reset_slider_to_default(s, func(default))
-            )
-            
+
             if setting_key == "inpaint_radius":
                 self.opencv_radius_slider = slider
                 self.opencv_radius_value = value_label
@@ -997,8 +865,8 @@ class ObjectRemovalTab(QWidget):
         minimax_layout = QVBoxLayout(self.minimax_params_group)
         minimax_layout.setContentsMargins(0, 0, 0, 0)
         
-        params_group = QGroupBox("Parameters")
-        params_layout = QGridLayout(params_group)
+        params_group = CollapsibleGroup("Parameters")
+        params_layout = QGridLayout(params_group.body)
         
         row = 0
         
@@ -1038,30 +906,13 @@ class ObjectRemovalTab(QWidget):
         default_steps = getattr(settings_mgr.app_settings, "default_minimax_steps", 6)
         current_steps = settings_mgr.get_session_setting("minimax_steps", default_steps)
         
-        label = ClickableLabel("Steps:")
-        label.setToolTip(f"Double-click to reset to default value ({default_steps})")
-        params_layout.addWidget(label, row, 0)
-        
-        self.minimax_steps_slider = QSlider(Qt.Horizontal)
-        self.minimax_steps_slider.setRange(4, 12)
-        self.minimax_steps_slider.setValue(current_steps)
-        self.minimax_steps_slider.setToolTip("Number of diffusion steps. Larger values are better quality but slower.")
-        params_layout.addWidget(self.minimax_steps_slider, row, 1)
-        
-        self.minimax_steps_value = QLabel(str(current_steps))
-        self.minimax_steps_value.setMinimumWidth(30)
-        self.minimax_steps_value.setAlignment(Qt.AlignCenter)
-        params_layout.addWidget(self.minimax_steps_value, row, 2)
-        
-        self.minimax_steps_slider.valueChanged.connect(
-            lambda v: self.minimax_steps_value.setText(str(v))
+        self.minimax_steps_slider, self.minimax_steps_value = add_slider_row(
+            params_layout, row, "Steps:", 4, 12, current_steps,
+            default=default_steps,
+            tooltip="Number of diffusion steps. Larger values are better quality but slower."
         )
         self.minimax_steps_slider.valueChanged.connect(
             lambda v: settings_mgr.set_session_setting("minimax_steps", v)
-        )
-        
-        label.doubleClicked.connect(
-            lambda: self._reset_slider_to_default(self.minimax_steps_slider, default_steps)
         )
         
         minimax_layout.addWidget(params_group)
@@ -1072,10 +923,6 @@ class ObjectRemovalTab(QWidget):
         settings_mgr = get_settings_manager()
         settings_mgr.set_session_setting("inpaint_method", algorithm)
 
-    def _reset_slider_to_default(self, slider, default_value):
-        """Reset a slider to its default value"""
-        slider.setValue(default_value)
-    
     def _save_slider_value(self, key, value):
         """Save slider value to session settings"""
         settings_mgr = get_settings_manager()
@@ -1136,7 +983,7 @@ class Sidebar(QWidget):
     
     def __init__(self):
         super().__init__()
-        self.setMinimumWidth(250)
+        self.setMinimumWidth(290)
         self._init_ui()
     
     def _init_ui(self):
@@ -1145,6 +992,9 @@ class Sidebar(QWidget):
         layout.setContentsMargins(5, 5, 5, 5)
         
         self.tab_widget = QTabWidget()
+        self.tab_widget.tabBar().setExpanding(True)
+        self.tab_widget.tabBar().setUsesScrollButtons(False)
+        self.tab_widget.tabBar().setDrawBase(False)
         self.segmentation_tab = SegmentationTab()
         self.matting_tab = MattingTab()
         self.removal_tab = ObjectRemovalTab()
@@ -2689,6 +2539,8 @@ class MainWindow(QMainWindow):
         self.main_splitter.setSizes(defaults.main_splitter_sizes)
         self.vertical_splitter.setSizes(defaults.vertical_splitter_sizes)
         self.bottom_splitter.setSizes(defaults.bottom_splitter_sizes)
+        for group in self.sidebar.findChildren(CollapsibleGroup):
+            group.set_expanded(True)
         print("Interface reset to default layout")
     
     def fit_to_screen(self):

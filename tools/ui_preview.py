@@ -48,7 +48,7 @@ def say(text=""):
     sys.__stdout__.flush()
 
 
-def _install_stubs():
+def install_stubs():
     for name in HEAVY_MODULES:
         sys.modules.setdefault(name, _Stub(name))
 
@@ -120,7 +120,7 @@ def main():
     workdir = tempfile.mkdtemp(prefix="sammie-ui-preview-")
     os.chdir(workdir)
 
-    _install_stubs()
+    install_stubs()
     import sammie_main
     from PySide6.QtWidgets import QApplication
     from sammie import gui_widgets
