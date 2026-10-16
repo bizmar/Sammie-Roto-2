@@ -17,7 +17,12 @@ from sammie.resources import resources
 from sammie import theme
 
 def show_splash(app):
-    splash_pix = QPixmap(":/splash.webp")
+    # Just the title band of the original splash, without the figures. The
+    # original stays in the compiled resources as the fallback.
+    splash_pix = QPixmap(os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                      "sammie", "resources", "splash_text.png"))
+    if splash_pix.isNull():
+        splash_pix = QPixmap(":/splash.webp")
     splash = QSplashScreen(splash_pix, Qt.SplashScreen)
     splash.showMessage("Loading Sammie-Roto...", Qt.AlignCenter | Qt.AlignBottom, Qt.white)
     splash.setWindowFlags(Qt.Window | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint)
