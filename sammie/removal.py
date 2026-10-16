@@ -1,7 +1,6 @@
 # sammie/removal.py
 import cv2
 import os
-import math
 import numpy as np
 import torch
 import shutil
@@ -15,25 +14,14 @@ from sammie.model_downloader import ensure_models
 from sammie.gui_widgets import show_painted
 
 
-class RemovalManager:
+class RemovalManager(core.CallbackMixin):
     """Manager for object removal operations"""
 
     def __init__(self):
+        super().__init__()
         self.pipe = None
+        self.propainterx_pipeline = None
         self.propagated = False  # whether removal has been completed
-        self.callbacks = []
-
-    def add_callback(self, callback):
-        """Add callback for removal events"""
-        self.callbacks.append(callback)
-
-    def _notify(self, action, **kwargs):
-        """Notify callbacks of changes"""
-        for callback in self.callbacks:
-            try:
-                callback(action, **kwargs)
-            except Exception as e:
-                print(f"Callback error: {e}")
 
     def load_minimax_model(self, parent_window=None):
         from diffusers.models import AutoencoderKLWan
@@ -129,14 +117,8 @@ class RemovalManager:
         device = core.DeviceManager.get_device()
         self.propagated = False
 
-        # Get in/out points from settings
-        in_point = settings_mgr.get_session_setting("in_point", None)
-        out_point = settings_mgr.get_session_setting("out_point", None)
-
         # Determine frame range to process
-        start_frame = in_point if in_point is not None else 0
-        end_frame = out_point if out_point is not None else frame_count - 1
-        frames_to_process = end_frame - start_frame + 1
+        start_frame, end_frame, frames_to_process = core.get_frame_range()
 
         print(f"Processing removal from frame {start_frame} to {end_frame} ({frames_to_process} frames)")
 
@@ -152,6 +134,7 @@ class RemovalManager:
         # Create progress dialog
         progress_dialog = QProgressDialog("Loading MiniMax-Remover model...", "Cancel", 0, 0, parent_window)
         progress_dialog.setWindowTitle("Object Removal Progress")
+        progress_dialog.setWindowModality(Qt.ApplicationModal)
         show_painted(progress_dialog)
         print(f"Loading MiniMax-Remover model to {device} with resolution {resized_w}x{resized_h}...")
         QApplication.processEvents()
@@ -282,14 +265,11 @@ class RemovalManager:
             frame = cv2.imread(frame_path)
             frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
-            # Combine masks for all objects on this frame
-            combined_mask = np.zeros(frame.shape[:2], np.uint8)
-            for object_id in object_ids:
-                mask_path = os.path.join(core.mask_dir, f"{frame_number:05d}", f"{object_id}.png")
-                if os.path.exists(mask_path):
-                    mask = cv2.imread(mask_path, cv2.IMREAD_GRAYSCALE)
-                    if mask is not None:
-                        combined_mask = cv2.bitwise_or(combined_mask, mask)
+            # Combine masks for all objects on this frame (falls back to an
+            # all-black mask, matching the frame's shape, if none are found)
+            combined_mask, _ = core.load_combined_mask(frame_number, object_ids)
+            if combined_mask is None:
+                combined_mask = np.zeros(frame.shape[:2], np.uint8)
 
             # Apply segmentation postprocessing (holes, dots, border_fix, grow)
             combined_mask = core.apply_mask_postprocessing(combined_mask)
@@ -378,26 +358,239 @@ class RemovalManager:
         """
         settings_mgr = get_settings_manager()
         max_size = settings_mgr.get_session_setting("minimax_resolution", 480)
+        return core.resize_to_limit(image, max_size, multiple=16, mask=mask)
 
-        h, w = image.shape[:2]
-        min_side = min(h, w)
+    def load_propainterx_model(self, parent_window=None):
+        from propainterx.propainterx_pipeline import ProPainterXPipeline
 
-        if min_side > max_size:
-            # Downscale proportionally and align to multiple of 16 (rounded down)
-            scale = max_size / min_side
-            new_h = math.floor((h * scale) / 16) * 16
-            new_w = math.floor((w * scale) / 16) * 16
+        device = core.DeviceManager.get_device()
+        core.DeviceManager.clear_cache()
+
+        model_dir = "./checkpoints/propainterx/"
+        propainter_ckpt = os.path.join(model_dir, "ProPainter.pth")
+        flowcomp_ckpt = os.path.join(model_dir, "recurrent_flow_completion.pth")
+        memfof_model_dir = os.path.join(model_dir, "memfof")
+
+        # download models if they don't exist
+        if not ensure_models(["propainter", "flow_completion", "memfof"], parent=parent_window):
+            return False
+
+        self.propainterx_pipeline = ProPainterXPipeline(
+            device=device,
+            propainter_ckpt=propainter_ckpt,
+            flowcomp_ckpt=flowcomp_ckpt,
+            memfof_model_dir=memfof_model_dir,
+            fp16=True,
+            clear_cache=core.DeviceManager.clear_cache,
+        )
+        self.propainterx_pipeline.load()
+        return self.propainterx_pipeline
+
+    def unload_propainterx_model(self):
+        if self.propainterx_pipeline is not None:
+            try:
+                self.propainterx_pipeline.unload()
+            except Exception as e:
+                print(f"Warning: Could not unload ProPainterX model cleanly: {e}")
+            self.propainterx_pipeline = None
+
+        gc.collect()
+        core.DeviceManager.clear_cache()
+        print("Unloaded ProPainterX model")
+
+    def resize_image_propainterx(self, image, mask=False):
+        """
+        Resize image based on the propainterx internal resolution setting.
+        - Downscales if the smaller side exceeds max_size.
+        - Always ensures dimensions are multiples of 8 (rounded down), as required by ProPainterX.
+        - Skips resizing if the output size would be identical.
+        - Uses INTER_NEAREST for masks, INTER_AREA otherwise.
+        """
+        settings_mgr = get_settings_manager()
+        max_size = settings_mgr.get_session_setting("propainterx_resolution", 720)
+        return core.resize_to_limit(image, max_size, multiple=8, mask=mask)
+
+    def _load_all_frames_and_masks_propainterx(self, points_list, inpaint_grow=0, start_frame=0, end_frame=None, on_progress=None):
+        """
+        Load all frames and corresponding combined masks into memory, resized for ProPainterX.
+        Unlike the MiniMax loader, frames/masks are left as raw uint8 (ProPainterX's own
+        pipeline handles normalization and mask dilation internally).
+
+        on_progress: optional callable(done, total) called periodically as frames load.
+
+        Returns:
+            tuple: (frames, masks)
+                - frames: list of np.ndarray (uint8, HxWx3, RGB)
+                - masks: list of np.ndarray (uint8, HxW, {0, 255})
+        """
+        frame_count = core.VideoInfo.total_frames
+        if end_frame is None:
+            end_frame = frame_count - 1
+        extension = core.get_frame_extension()
+
+        object_ids = sorted(list(set(p['object_id'] for p in points_list if 'object_id' in p)))
+        if not object_ids:
+            print("No objects found — returning empty frame/mask arrays.")
+            return [], []
+
+        frames = []
+        masks = []
+        total = end_frame - start_frame + 1
+
+        for i, frame_number in enumerate(range(start_frame, end_frame + 1)):
+            if on_progress is not None:
+                on_progress(i, total)
+
+            frame_path = os.path.join(core.frames_dir, f"{frame_number:05d}.{extension}")
+
+            frame = cv2.imread(frame_path)
+            frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+
+            # Combine masks for all objects on this frame (falls back to an
+            # all-black mask, matching the frame's shape, if none are found)
+            combined_mask, _ = core.load_combined_mask(frame_number, object_ids)
+            if combined_mask is None:
+                combined_mask = np.zeros(frame.shape[:2], np.uint8)
+
+            combined_mask = core.apply_mask_postprocessing(combined_mask)
+
+            if inpaint_grow != 0:
+                combined_mask = core.grow_shrink(combined_mask, inpaint_grow)
+
+            frame = self.resize_image_propainterx(frame)
+            combined_mask = self.resize_image_propainterx(combined_mask, mask=True)
+            combined_mask = ((combined_mask > 127) * 255).astype(np.uint8)
+
+            frames.append(frame)
+            masks.append(combined_mask)
+
+        print(f"Loaded {len(frames)} frames and masks into memory.")
+        return frames, masks
+
+    def run_object_removal_propainterx(self, points, parent_window=None):
+        """
+        Run ProPainterX (inpainting) on all frames.
+        Combines masks for all objects and loads all frames and masks into memory upfront.
+
+        Args:
+            points (list): List of point dictionaries containing object_id and frame information
+            parent_window: Parent window for progress dialog
+
+        Returns:
+            int: 1 if successful, 0 if cancelled/failed
+        """
+        from propainterx.propainterx_pipeline import CancelledError
+
+        frame_count = core.VideoInfo.total_frames
+        settings_mgr = get_settings_manager()
+        self.propagated = False
+
+        # Determine frame range to process
+        start_frame, end_frame, frames_to_process = core.get_frame_range()
+
+        print(f"Processing removal from frame {start_frame} to {end_frame} ({frames_to_process} frames)")
+
+        # Get settings
+        grow = settings_mgr.get_session_setting("grow", 0)  # segmentation grow
+        inpaint_grow = settings_mgr.get_session_setting("inpaint_grow", 0)  # object removal grow
+        inpaint_grow = inpaint_grow + grow
+
+        device = core.DeviceManager.get_device()
+        extension = core.get_frame_extension()
+
+        progress_dialog = QProgressDialog("Loading ProPainterX model...", "Cancel", 0, 0, parent_window)
+        progress_dialog.setWindowTitle("Object Removal Progress")
+        progress_dialog.setWindowModality(Qt.ApplicationModal)
+        progress_dialog.setAutoClose(False)
+        progress_dialog.setAutoReset(False)
+        progress_dialog.setMinimumDuration(0)
+        show_painted(progress_dialog)
+
+        try:
+            if self.load_propainterx_model(parent_window=parent_window) is False:
+                progress_dialog.close()
+                return 0
+        except Exception:
+            progress_dialog.close()
+            raise
+
+        progress_dialog.setRange(0, 100)
+        progress_dialog.setValue(0)
+        # Create output directory if it doesn't exist (don't clear existing frames)
+        os.makedirs(core.removal_dir, exist_ok=True)
+
+        print("Loading frames and masks...")
+
+        def on_load_progress(done, total):
+            percent = int((done / total) * 100) if total else 100
+            progress_dialog.setLabelText(f"Loading frames and masks... ({done}/{total})")
+            progress_dialog.setValue(percent)
+            QApplication.processEvents()
+
+        try:
+            frames, masks = self._load_all_frames_and_masks_propainterx(
+                points, inpaint_grow=inpaint_grow, start_frame=start_frame, end_frame=end_frame,
+                on_progress=on_load_progress,
+            )
+        except Exception:
+            progress_dialog.close()
+            raise
+
+        # Between loading and the first pipeline stage, show a busy state instead of a stale 100%
+        progress_dialog.setLabelText("Preparing ProPainterX...")
+        progress_dialog.setRange(0, 0)
+        QApplication.processEvents()
+
+        if not frames:
+            print("No frames to process.")
+            progress_dialog.close()
+            return 0
+
+        def on_progress(stage_idx, stage_count, label, done, total):
+            if progress_dialog.maximum() == 0:
+                progress_dialog.setRange(0, 100)
+            percent = int((done / total) * 100) if total else 100
+            progress_dialog.setLabelText(f"Stage {stage_idx + 1}/{stage_count}: {label} ({done}/{total})")
+            progress_dialog.setValue(percent)
+            QApplication.processEvents()
+
+        def should_cancel():
+            QApplication.processEvents()
+            return progress_dialog.wasCanceled()
+
+        def on_frame_done(idx, frame):
+            frame_number = start_frame + idx
+            composited = self.composite_removal_over_original(frame, frame_number, points)
+            output_path = os.path.join(core.removal_dir, f"{frame_number:05d}.{extension}")
+            frame_bgr = cv2.cvtColor(composited, cv2.COLOR_RGB2BGR)
+            cv2.imwrite(output_path, frame_bgr)
+
+        try:
+            self.propainterx_pipeline.run(
+                frames, masks, on_progress=on_progress, on_frame_done=on_frame_done, should_cancel=should_cancel
+            )
+        except CancelledError:
+            print("User cancelled ProPainterX processing.")
+            self.propagated = False
+            progress_dialog.close()
+            self.unload_propainterx_model()
+            return 0
+        except RuntimeError as e:
+            self.propagated = False
+            progress_dialog.close()
+            self.unload_propainterx_model()
+            raise
+        finally:
+            del frames, masks
+
+        if frame_count == frames_to_process:  # only set propagated if the whole video was processed
+            self.propagated = True
         else:
-            # Keep same size, just align down to multiple of 16
-            new_h = math.floor(h / 16) * 16
-            new_w = math.floor(w / 16) * 16
-
-        # Only resize if necessary
-        if (new_w, new_h) != (w, h):
-            interpolation = cv2.INTER_NEAREST if mask else cv2.INTER_AREA
-            image = cv2.resize(image, (new_w, new_h), interpolation=interpolation)
-
-        return image
+            self.propagated = False
+        print("Processing complete!")
+        progress_dialog.close()
+        self._notify('removal_complete')
+        return 1
 
     def run_object_removal_cv(self, points_list, parent_window):
         """

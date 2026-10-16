@@ -75,7 +75,8 @@ def check_reset_interface_and_layout_persistence(app):
     app.processEvents()
 
     groups = window.sidebar.findChildren(CollapsibleGroup)
-    check(len(groups) == 16, f"the sidebar has 16 sections ({len(groups)})")
+    # 17 since v2.5.0: ProPainterX's Parameters, beside OpenCV's Algorithm and Parameters
+    check(len(groups) == 17, f"the sidebar has 17 sections ({len(groups)})")
 
     # Sections that share a title (Instructions, Parameters, Postprocessing) move together
     instructions = [g for g in groups if g._title == "Instructions"]

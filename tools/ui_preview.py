@@ -61,7 +61,7 @@ def create_main_window():
     import sammie_main
     from sammie import gui_widgets
 
-    gui_widgets.UpdateChecker.check_for_updates = lambda self: None
+    gui_widgets.UpdateChecker.check_for_updates = lambda self, *args, **kwargs: None
     sammie_main.MainWindow._deferred_init = lambda self: None
     return sammie_main.MainWindow()
 

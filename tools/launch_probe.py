@@ -42,7 +42,7 @@ QtWidgets.QApplication = RecordingApp
 
 # No network, no model loading, no session restore
 from sammie import gui_widgets
-gui_widgets.UpdateChecker.check_for_updates = lambda self: None
+gui_widgets.UpdateChecker.check_for_updates = lambda self, *args, **kwargs: None
 import sammie_main
 sammie_main.MainWindow._deferred_init = lambda self: None
 
