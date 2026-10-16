@@ -25,6 +25,60 @@ def show_splash(app):
     app.processEvents()
     return splash
 
+def foreground_window():
+    """The window that has the keyboard focus right now, or None (Windows only)."""
+    if os.name != 'nt':
+        return None
+    try:
+        import ctypes
+        return ctypes.windll.user32.GetForegroundWindow() or None
+    except Exception:
+        return None
+
+def bring_to_front(window, focus_at_launch):
+    """
+    Bring the main window to the front, unless the user has moved on.
+
+    Windows only lets the program a user just started come to the front, and
+    the desktop shortcut starts Sammie through uvw.exe, uv.exe and the venv's
+    python.exe, so that permission stays with uvw.exe and the main window
+    opens behind whatever had focus. If the focus is still on the window that
+    had it at launch, or on Sammie's own splash, the user hasn't gone on to
+    something else, so the window is brought forward. Otherwise it is left
+    where it is and Windows flashes its taskbar button, as it normally would.
+
+    Any failure leaves the window exactly as Qt showed it.
+    """
+    if os.name != 'nt':
+        return
+    try:
+        import ctypes
+        from ctypes import wintypes
+        user32, kernel32 = ctypes.windll.user32, ctypes.windll.kernel32
+        hwnd = int(window.winId())
+        focus = user32.GetForegroundWindow()
+        if focus == hwnd:
+            return
+        focus_pid = wintypes.DWORD()
+        focus_thread = user32.GetWindowThreadProcessId(focus, ctypes.byref(focus_pid))
+        if focus != focus_at_launch and focus_pid.value != os.getpid():
+            return
+        # SetForegroundWindow is refused to a process that wasn't just
+        # started by the user. Sharing the focused window's input state for
+        # the call is the usual way round that (Qt's own AlwaysActivateWindow
+        # option does the same, but PySide6 doesn't expose it).
+        own_thread = kernel32.GetCurrentThreadId()
+        attached = bool(focus_thread) and focus_thread != own_thread and \
+            bool(user32.AttachThreadInput(own_thread, focus_thread, True))
+        try:
+            user32.BringWindowToTop(hwnd)
+            user32.SetForegroundWindow(hwnd)
+        finally:
+            if attached:
+                user32.AttachThreadInput(own_thread, focus_thread, False)
+    except Exception:
+        pass
+
 def check_single_instance():
     """
     Check if another instance is already running.
@@ -123,6 +177,9 @@ def parse_arguments():
     return file_path
 
 if __name__ == "__main__":
+    # Before anything is shown: where the focus was when the user launched us
+    focus_at_launch = foreground_window()
+
     # Parse command line arguments first
     file_to_load = parse_arguments()
 
@@ -164,6 +221,7 @@ if __name__ == "__main__":
             window = MainWindow(initial_file=file_to_load)
             window.show()
             splash.finish(window)
+            bring_to_front(window, focus_at_launch)
             window.setWindowIcon(QIcon(":/icon.ico"))
         except ImportError as e:
             splash.close()
